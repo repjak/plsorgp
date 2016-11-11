@@ -6,21 +6,15 @@ function [minLoss, idx, predProbs, losses] = zeroone(P)
 %
 %   See also LOSS, HINGE.
 
-  r = size(P, 1);
-  n = size(P, 2);
+  assert(isempty(P) || all(abs(sum(P, 2) - 1) <= 1e-4));
 
-  if n < 1
-    error('The number of predictions must be positive.');
-  end
-
-  if r < 2
-    error('At least 2 classes are expected.');
-  end
+  r = size(P, 2);
 
   losses = 1 - P;
-  [minLoss, idx] = min(losses);
+  [minLoss, idx] = min(losses, [], 2);
 
-  idxLogical = bsxfun(@eq, idx, (1:r)');
-  predProbs = P(idxLogical)';
+  idxLogical = bsxfun(@eq, (1:r)', idx');
+  Q = P';
+  predProbs = Q(idxLogical);
 end
 

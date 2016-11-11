@@ -7,18 +7,14 @@ function [minLoss, idx, predProbs, losses] = hinge(P)
 %
 %   See also LOSS, ZEROONE.
 
-  r = size(P, 1);  % number of groups
-  n = size(P, 2);  % size of data
+  r = size(P, 2);  % number of groups
 
-  if n < 1
-    error('The number of predictions must be positive.');
+  if r < 3
+    w = 1;
+  else
+    w = 0.5*(r)*(r-1);  % 1 + 2 + ... + r - 1
   end
 
-  if r < 2
-    error('At least 2 classes are expected.');
-  end
-
-  w = 0.5*(r)*(r-1);  % 1 + 2 + ... + r - 1
   penalty = @(i, j) abs(i-j)/w;
   L = bsxfun(penalty, (1:r), (1:r)');
 

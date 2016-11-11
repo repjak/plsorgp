@@ -1,11 +1,11 @@
 function [minLoss, idx, predProbs, losses] = loss(P, L)
 %RISK A general loss-minimization function.
 %   [expLoss, idx, predProbs, losses] = LOSS(P, L) minimizes a loss
-%   function given by a square matrix C, where C(i,j) expresses the risk
-%   (loss) that the ith ordinal class is misclassfied for the jth ordinal
-%   class.
+%   function given by a R-R square matrix C, where C(i,j) expresses the
+%   risk (loss) that the ith ordinal class is misclassfied for the jth
+%   ordinal class.
 %
-%   P is a R-N matrix of N predicted probability distributions for each of
+%   P is a N-R matrix of N predicted probability distributions for each of
 %   R ordinal classes (ordered).
 %
 %   Returns the following vectors:
@@ -17,15 +17,15 @@ function [minLoss, idx, predProbs, losses] = loss(P, L)
 %
 %   See also HINGE, ZEROONE.
 
-  r = size(P, 1);  % number of groups
-  n = size(P, 2);  % size of data
+  assert(isempty(P) || all(abs(sum(P, 2) - 1) <= 1e-4));
 
-  if n < 1
-    error('The number of predictions must be positive.');
-  end
+  n = size(P, 1);  % size of data
+  r = size(P, 2);  % number of groups
 
-  if r < 2
-    error('At least 2 classes are expected.');
+  % assert(isempty(P) || all(abs(sum(P, 2) - 1) <= 1e-4));
+
+  if nargin < 2
+    error('Loss matrix not specified.');
   end
 
   if any(size(L) ~= [r r])
@@ -33,14 +33,15 @@ function [minLoss, idx, predProbs, losses] = loss(P, L)
       'dimension equal to the number of classes.']);
   end
 
-  losses = zeros(r,  n);
+  losses = zeros(n, r);
   for i = 1:n
-    losses(:, i) = L'*P(:, i);
+    losses(i, :) = P(i, :) * L';
   end
 
-  [minLoss, idx] = min(losses);
+  [minLoss, idx] = min(losses, [], 2);
 
-  idxLogical = bsxfun(@eq, idx, (1:r)');
-  predProbs = P(idxLogical)';
+  idxLogical = bsxfun(@eq, (1:r)', idx');
+  Q = P';
+  predProbs = Q(idxLogical);
 end
 
