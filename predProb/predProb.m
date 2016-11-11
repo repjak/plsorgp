@@ -4,10 +4,10 @@ function p = predProb(ys, hyp, mu, s2)
   delta = hyp(3:end);
 
   a = alpha * mu;
-  q1 = a + beta(ys, beta1, delta);
-  q2 = a + beta(ys - 1, beta1, delta);
-  w = sqrt(1+alpha^2 * sqr(s2));
+  q1 = arrayfun(@(y) a + betai(y, beta1, delta), ys);
+  q2 = arrayfun(@(y) a + betai(y - 1, beta1, delta), ys);
+  w = sqrt(1+alpha^2 * s2);
 
-  p = normcdf(q1/w) - normcdf(q2/w);
+  p = bsxfun(@(x, y) normcdf(x/w) - normcdf(y/w), q1, q2);
 end
 

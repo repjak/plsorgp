@@ -18,8 +18,6 @@ classdef CovTest < matlab.unittest.TestCase
       testCase.verifyError(@() sqexp(Xm, Xn), '');
       testCase.verifyError(@() sqexp(Xm, [0; 1]), '');
       testCase.verifyError(@() sqexp(Xm, Xn, sigma), '');
-      testCase.verifyError(@() sqexp(Xm, Xn, [sigma l]), '');
-      testCase.verifyError(@() sqexp(Xm, Xn, [sigma; -1], [0; 1]), '');
 
       [actK, actdK] = sqexp(Xm, Xn, [sigma; l], [1; 2]);
       [expK, expdK] = CovTest.sqexpNaive(Xm, Xn, [sigma; l], [1; 2]);
@@ -58,8 +56,7 @@ classdef CovTest < matlab.unittest.TestCase
       testCase.verifyError(@() sqexpard(Xm, Xn), '');
       testCase.verifyError(@() sqexpard(Xm, [0; 1]), '');
       testCase.verifyError(@() sqexpard(Xm, Xn, sigma), '');
-      testCase.verifyError(@() sqexpard(Xm, Xn, [sigma l']), '');
-      testCase.verifyError(@() sqexpard(Xm, Xn, [sigma; -1], [0; 1]), '');
+      testCase.verifyError(@() sqexpard(Xm, Xn, [sigma; -1]), '');
 
       testCase.verifyEqual(actK, expK, 'AbsTol', 1e-4);
       testCase.verifyEqual(actdK, expdK, 'AbsTol', 1e-2);
