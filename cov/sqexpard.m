@@ -3,6 +3,7 @@ function [Kmn, dKmn] = sqexpard(Xm, z, theta, j)
 %relevance detection (ARD).
 %   Kmn        = SQEXPARD(Xm, Xn, theta) m x n cross-covariances
 %   Km         = SQEXPARD(Xm, 'diag', theta) n self-covariances
+%   [Kmn dKmn] = SQEXPARD(__) compute also the gradient
 %   [Kmn dKmn] = SQEXPARD(__, j) partial derivations according to all
 %   hyperparameters from j
 %
@@ -17,7 +18,7 @@ function [Kmn, dKmn] = sqexpard(Xm, z, theta, j)
 %
 %      Xm    -- an m-d matrix of m examples with dimensionality d
 %      Xn    -- an n-d matrix
-%      theta -- a column vector of d+1 hyperparameters, theta = [sigma; l]
+%      theta -- a vector of d+1 hyperparameters, theta = [sigma; l]
 %      j     -- a vector of hyperparameter indices
 %
 %   See also SQEXP.
@@ -43,13 +44,13 @@ function [Kmn, dKmn] = sqexpard(Xm, z, theta, j)
     end
   end
 
-  if ~all(size(theta) == [d+1 1]) || any(theta) <= 0
+  if length(theta) ~= d+1 || any(theta) <= 0
     error(['The squared exponential with ARD expects a column vector', ...
       ' of dim+1 positive hyperparameters.']);
   end
 
   sigma = theta(1);
-  l = theta(2:end);
+  l = reshape(theta(2:end), length(theta)-1, 1);
 
   if diag
     % self-covariances
@@ -67,17 +68,19 @@ function [Kmn, dKmn] = sqexpard(Xm, z, theta, j)
     Kmn = bsxfun(@plus, dot(Xm, Xm, 2), dot(Xn, Xn, 2)') - 2 * (Xm * Xn');
   end
 
-  if nargin <= 3
-    Kmn = sigma^2 * exp(-Kmn / 2);
-    dKmn = [];
+  if nargout < 2
+
   else
-    % precomputed for the partial derivatives
+    % for the partial derivatives
     dKmn = repmat(exp(-Kmn / 2), 1, 1, length(j));
 
-    % the covariance matrix itself
     Kmn = sigma^2 * exp(-Kmn / 2);
 
-    for k = j'
+    if nargin < 4
+      j = (1:(d+1));
+    end
+
+    for k = reshape(j, 1, numel(j))
       if k == 1
         % the signal variance parameter
         dKmn(:, :, k) = 2 * sigma * dKmn(:, :, k);
