@@ -21,9 +21,9 @@ function z = crossval(f, X, varargin)
 
   for i = 1:cpart.NumTestSets;
     if cpart.TestSize(i) > n
-      error('Test size %d greater then the data size %d.', cpart.TestSize(i), n);
+      error('Test size %d greater than the data size %d.', cpart.TestSize(i), n);
     elseif cpart.TrainSize(i) > n
-      error('Training size %d greater then the data size %d.', cpart.TrainSize(i), n);
+      error('Training size %d greater than the data size %d.', cpart.TrainSize(i), n);
     end
 
     Xtr = X(cpart.training(i), :);
