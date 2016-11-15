@@ -16,7 +16,7 @@ rng(seed);
 % The categories are defined so that y belongs to category i iff
 % 0 < y - i < 1.
 %
-% The model's response is tested on a linearly spaced points between
+% The model's response is tested on linearly spaced points between
 % 0 and 20.
 
 intrvs = [2 4; 4 6; 8 14; 14 18; 18 20];
