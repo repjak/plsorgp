@@ -32,8 +32,9 @@ function z = crossval(f, X, varargin)
     try
       y = f(Xtr, Xte);
     catch err
+      r = getReport(err);
       error('The function ''%s'' generated the following error:\n%s',  ...
-        s.function, err.message);
+        s.function, r);
     end
 
     y = reshape(y, 1, numel(y));
