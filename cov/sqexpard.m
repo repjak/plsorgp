@@ -69,16 +69,16 @@ function [Kmn, dKmn] = sqexpard(Xm, z, theta, j)
   end
 
   if nargout < 2
-
+    Kmn = sigma^2 * exp(-Kmn / 2);
   else
+    if nargin < 4
+      j = (1:(d+1));
+    end
+
     % for the partial derivatives
     dKmn = repmat(exp(-Kmn / 2), 1, 1, length(j));
 
     Kmn = sigma^2 * exp(-Kmn / 2);
-
-    if nargin < 4
-      j = (1:(d+1));
-    end
 
     for k = reshape(j, 1, numel(j))
       if k == 1
@@ -86,17 +86,17 @@ function [Kmn, dKmn] = sqexpard(Xm, z, theta, j)
         dKmn(:, :, k) = 2 * sigma * dKmn(:, :, k);
       elseif k <= d + 1
         % a length-scale parameter
-        d = k - 1;
+        dim = k - 1;
 
         if diag
           dKmn(:, :, k) = zeros(size(Kmn, 1), size(Kmn, 2));
         else
-          % pairwise squared distances in kth dimension
-          sqdistk = bsxfun(@(xk, yk) (xk - yk).^2, Xm(:, d), Xn(:, d)');
-          dKmn(:, :, k) = sigma^2 * dKmn(:, :, k) .* (sqdistk / l(d)^3);
+          % pairwise squared distances in (k-1)th dimension
+          sqdistk = bsxfun(@(xk, yk) (xk - yk).^2, Xm(:, dim), Xn(:, dim)');
+          dKmn(:, :, k) = sigma^2 * dKmn(:, :, k) .* (sqdistk / l(dim)^3);
         end
       else
-        error(['Hyperparameter index ''' k ''' out of range.']);
+        error('Hyperparameter index %d out of range.', k);
       end
     end
   end

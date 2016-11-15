@@ -75,14 +75,14 @@ function [Kmn, dKmn] = sqexp(Xm, z, theta, j)
   if nargout < 2
     Kmn = sigma^2 * exp(-Kmn / 2);
   else
+    if nargin < 4
+      j = 1:2;
+    end
+
     % for the partial derivatives
     dKmn = repmat(Kmn, 1, 1, length(j));
 
     Kmn = sigma^2 * exp(-Kmn / 2);
-
-    if nargin < 4
-      j = 1:2;
-    end
 
     for k = reshape(j, 1, numel(j))
       switch k
