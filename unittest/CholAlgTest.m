@@ -1,6 +1,4 @@
 classdef CholAlgTest < matlab.unittest.TestCase
-  %CHOLALGTEST Summary of this class goes here
-  %   Detailed explanation goes here
 
   methods (Test)
     function cholInvTest(testCase)

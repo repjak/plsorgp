@@ -1,9 +1,4 @@
 classdef CovTest < matlab.unittest.TestCase
-  %COVTEST Summary of this class goes here
-  %   Detailed explanation goes here
-
-  properties
-  end
 
   methods (Test)
     function sqexpTest(testCase)
