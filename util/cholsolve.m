@@ -1,6 +1,6 @@
 function X = cholsolve(R, B, varargin)
 %CHOLSOLVE Solve a system of linear equations AX = B for X with A given by
-% its Cholesky decomposition, i.e. A = R'R.
+%its Cholesky decomposition, i.e. A = R'R.
 %   X = cholsolve(R, B) solve AX = B for X, where A = R'R
 %   X = cholsolve(R, 'right') solve XA = B for X, where A = RR'
 
