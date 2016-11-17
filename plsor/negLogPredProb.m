@@ -24,7 +24,7 @@ function [p, dp] = negLogPredProb(hyp, nHypCov, covFcn, cvPredProbFcn, X, y, n)
     ZKinvy = zeros(size(Kinv, 1), 1, size(dK, 3)); % for Kinv * dK(l) * Kinvy
     for l = 1:size(dK, 3)
       Z = cholsolve(R, dK(:, :, l)); % K * Z == dK
-      ZKinv(:, :, l) = cholsolve(R, Z, 'right'); % ZKinv * K = Z
+      ZKinv(:, :, l) = cholsolve(R', Z', 'lower')'; % ZKinv * K = Z
       ZKinvy(:, :, l) = Z * Kinvy;
     end
   end
