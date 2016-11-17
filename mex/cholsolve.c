@@ -134,6 +134,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
       "Unrecognized type of the input matrix.");
   }
 
+  mxDestroyArray(A);
+
   /* B has been modified with the result */
   plhs[0] = B;
 }
