@@ -3,7 +3,7 @@
  * where A is a symmetric positive definite matrix given by its
  * lower- or upper-triangular Cholesky factor.
  *
- * Uses LAPACK call [D|S]POTRF.
+ * Uses LAPACK call [D|S]POTRS.
  *
  * TODO: add support for Hermitian positive definite matrices.
  *
