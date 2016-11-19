@@ -19,8 +19,7 @@ function p = logPredProbLoo(i, y, hyp, nHypCov, Kinv, Kinvy, gradOpts)
   p = log(predProb(y(i), hyp, muloo, s2loo));
 
   if nargin >= 7
-    dK = gradOpts.dK;
-    ZKinv = gradOpts.ZKinv;
+    diagZKinv = gradOpts.diagZKinv;
     ZKinvy = gradOpts.ZKinvy;
     diagKinv2 = gradOpts.diagKinv2;
     Kinv2y = gradOpts.Kinv2y;
@@ -33,8 +32,7 @@ function p = logPredProbLoo(i, y, hyp, nHypCov, Kinv, Kinvy, gradOpts)
       assert(all(j >= 1 && j <= length(hyp) + nHypCov + 1));
     end
 
-    assert(all(size(dK) == [n n nHypCov]));
-    assert(all(size(ZKinv) == [n n nHypCov]));
+    assert(all(size(diagZKinv) == [n 1 nHypCov]));
     assert(all(size(ZKinvy) == [n 1 nHypCov]));
     assert(all(size(diagKinv2) == [1 n]));
     assert(all(size(Kinv2y) == [n 1]));
@@ -66,9 +64,10 @@ function p = logPredProbLoo(i, y, hyp, nHypCov, Kinv, Kinvy, gradOpts)
       [hi, dhi] = h(j);
       [gi, dgi] = g(j);
       for l = reshape(j, 1, numel(j))
-        d = normpdf(fi/gi) * (dfi(l) * gi - dgi(l) * fi) - ...
-          normpdf(hi/gi) * (dhi(l) * gi - dgi(l) * hi);
-        p(l+1) = d / (gi^2 * (normcdf(fi/gi) - normcdf(hi/gi)));
+        d1 = dfi(l) * gi - dgi(l) * fi;
+        d2 = dhi(l) * gi - dgi(l) * hi;
+        p(l+1) = (d1 * normpdf(fi/gi) - d2 * normpdf(hi/gi)) / ...
+          (gi^2 * (normcdf(fi/gi) - normcdf(hi/gi)));
       end
     end
   end
@@ -92,16 +91,17 @@ function p = logPredProbLoo(i, y, hyp, nHypCov, Kinv, Kinvy, gradOpts)
         [~, db] = betai(y(i), hyp, j(k));
         df(k) = db;
       elseif j(k) <= length(hyp) + nHypCov
-        % dtheta(k)
+        % dtheta(j(k) - length(hyp))
         m = j(k) - length(hyp);
-        df(k) = d1(alpha, Kinv(i, i), Kinvy(i), ZKinv(i, i, m), ZKinvy(i, 1, m));
+        df(k) = dHypCov(alpha, Kinv(i, i), Kinvy(i), ...
+          diagZKinv(i, 1, m), ZKinvy(i, 1, m));
       elseif j(k) == length(hyp) + nHypCov + 1
         % dsigma2
-        df(k) = d1(alpha, Kinv(i, i), Kinvy(i), Kinv2y(i), diagKinv2(i));
+        df(k) = dHypCov(alpha, Kinv(i, i), Kinvy(i), ...
+          Kinv2y(i), diagKinv2(i));
       end
     end
   end
-
 
   function [z, dh] = h(j)
     z = alpha*muloo + betai(y(i)-1, hyp);
@@ -121,17 +121,19 @@ function p = logPredProbLoo(i, y, hyp, nHypCov, Kinv, Kinvy, gradOpts)
         [~, db] = betai(y(i), hyp, j(k));
         dh(k) = db;
       elseif j(k) <= length(hyp) + nHypCov
-        % dtheta(k)
+        % dtheta(j(k) - length(hyp))
         m = j(k) - length(hyp);
-        dh(k) = d1(alpha, Kinv(i, i), Kinvy(i), ZKinv(i, i, m), ZKinvy(i, 1, m));
+        dh(k) = dHypCov(alpha, Kinv(i, i), Kinvy(i), ...
+          diagZKinv(i, 1, m), ZKinvy(i, 1, m));
       elseif j(k) == length(hyp) + nHypCov + 1
         % dsigma2
-        dh(k) = d1(alpha, Kinv(i, i), Kinvy(i), Kinv2y(i), diagKinv2(i));
+        dh(k) = dHypCov(alpha, Kinv(i, i), Kinvy(i), ...
+          Kinv2y(i), diagKinv2(i));
       end
     end
   end
 
-  function d = d1(alpha, Kinvii, Kinvyi, ZKinvii, ZKinvyi)
+  function d = dHypCov(alpha, Kinvii, Kinvyi, ZKinvii, ZKinvyi)
     d = (alpha / Kinvii) * (ZKinvyi - Kinvyi * ZKinvii / Kinvii);
   end
 
@@ -148,16 +150,13 @@ function p = logPredProbLoo(i, y, hyp, nHypCov, Kinv, Kinvy, gradOpts)
       if j(k) == 1
         % dalpha
         dg(k) = alpha * s2loo / z;
-      elseif j(k) == 2
-        % dbeta1
-        dg(2) = 0;
-      elseif j(k) <= length(hyp)
-        % ddelta(k)
+      elseif j(k) == 2 || j(k) <= length(hyp)
+        % dbeta1 or ddelta(j(k) - 1)
         dg(k) = 0;
       elseif j(k) <= length(hyp) + nHypCov
-        % dtheta(k)
+        % dtheta(j(k) - length(hyp))
         m = j(k) - length(hyp);
-        dg(k) = (alpha^2 * ZKinv(i, i, m)) / (2 * z * Kinv(i, i)^2);
+        dg(k) = (alpha^2 * diagZKinv(i, 1, m)) / (2 * z * Kinv(i, i)^2);
       elseif j(k) == length(hyp) + nHypCov + 1
         % dsigma2
         dg(k) = (alpha^2 * diagKinv2(i)) / (2 * z * Kinv(i, i)^2);
