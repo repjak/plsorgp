@@ -2,5 +2,5 @@ MEX = mex
 MEXEXT = mexa64
 MEXLIBS = -lmwlapack
 MEXFLAGS = -v -largeArrayDims -O
-CFLAGS = -Wall
+CFLAGS = -ansi -Wall
 COPTIMFLAGS = -O3
