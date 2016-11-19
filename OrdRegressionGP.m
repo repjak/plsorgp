@@ -92,8 +92,8 @@ classdef OrdRegressionGP < handle
         @(x) (ischar(x) && ismember(x, {'zeroone', 'hinge'})) || ...
         isa(x, 'function_handle'));
 
-      if nargin == 3 && iscell(varargin{3})
-        arglist = varargin{3};
+      if nargin >= 3 && iscell(varargin{1})
+        arglist = varargin{1};
       else
         arglist = varargin;
       end
@@ -133,17 +133,21 @@ classdef OrdRegressionGP < handle
         obj.muX = mean(obj.X);
         obj.stdX = std(obj.X);
         obj.X = bsxfun(@minus, obj.X, obj.muX);
-        obj.X = bsxfun(@rdivide, obj.X, obj.stdX);
+
+        if obj.stdX > 0
+          obj.X = bsxfun(@rdivide, obj.X, obj.stdX);
+        end
       end
       obj.standardize = p.Results.Standardize;
 
-      % determine ordinal classes
+      % map targets into 1:r
       [obj.yUnq, obj.yUnqIdx, obj.ys] = unique(obj.y, 'sorted');
       obj.r = length(unique(obj.ys, 'sorted'));
 
       obj.n = size(obj.X, 1);
       obj.d = size(obj.X, 2);
 
+      % initialize hyperparameters
       obj.hyp = struct();
       obj.hyp.cov = p.Results.KernelParameters;
       obj.hyp.plsor = p.Results.PlsorParameters;
@@ -157,7 +161,7 @@ classdef OrdRegressionGP < handle
               error('Kernel function ''%s'' takes 2 hyperparameters.', ...
                 p.Results.KernelFunction);
             elseif isempty(obj.hyp.cov)
-              obj.hyp.cov = [1 1/obj.d];
+              obj.hyp.cov = [1 sqrt(1/obj.d)];
             else
               obj.hyp.cov = reshape(obj.hyp.cov, 1, numel(obj.hyp.cov));
             end
@@ -187,7 +191,7 @@ classdef OrdRegressionGP < handle
 
       % set the noise hyperparameter
       if p.Results.Sigma2 == 0
-        obj.hyp.sigma2 = std(obj.ys) / sqrt(2);
+        obj.hyp.sigma2 = var(obj.ys) / 2;
       else
         obj.hyp.sigma2 = p.Results.SigmaNoise;
       end
@@ -264,7 +268,10 @@ classdef OrdRegressionGP < handle
 
       % normalize the data
       Xnew = bsxfun(@minus, Xnew, obj.muX);
-      Xnew = bsxfun(@rdivide, Xnew, obj.stdX);
+
+      if obj.stdX > 0
+        Xnew = bsxfun(@rdivide, Xnew, obj.stdX);
+      end
 
       m = size(Xnew, 1);
 
@@ -350,19 +357,25 @@ classdef OrdRegressionGP < handle
           lb = [-Inf -Inf ...
             1e-3+[zeros(1, length(obj.hyp.plsor)-2) ...
             zeros(1, obj.nHypCov + 1)]];
-%          ub = [Inf(1, length(obj.hyp.plsor)) ...
-%            5*std(obj.y) 5];
 
-          startPoints = zeros(3, obj.nHyp);
-          startPoints(1, :) = [obj.hyp.plsor obj.hyp.cov obj.hyp.sigma2];
+          startPoints = zeros(2, obj.nHyp);
+          % startPoints(1, :) = [obj.hyp.plsor obj.hyp.cov obj.hyp.sigma2];
 
-          startPoints(2, :) = [1 0 ones(1, obj.r - 2) obj.hyp.cov obj.hyp.sigma2];
+          startPoints(1, :) = [1 0 ones(1, obj.r - 2) obj.hyp.cov obj.hyp.sigma2];
 
-          b = sort(1.5 * (obj.r - 1) * rand(1, obj.r - 1));
-          alpha = 4 * rand() - 2;
-          beta1 = rand() - 0.5;
-          delta = arrayfun(@(i) b(i) - b(i - 1), 2:(obj.r - 1));
-          startPoints(3, :) = [alpha beta1 delta obj.hyp.cov obj.hyp.sigma2];
+          undef = true;
+
+          while undef
+            b = sort(1.5 * (obj.r - 1) * rand(1, obj.r - 1));
+            alpha = 4 * rand() - 2;
+            beta1 = 2 * rand() - 1;
+            delta = arrayfun(@(i) b(i) - b(i - 1), 2:(obj.r - 1));
+            hyp0 = [alpha beta1 delta obj.hyp.cov obj.hyp.sigma2];
+            y0 = obj.nlpFcn(hyp0);
+            undef = isinf(y0) || isnan(y0);
+          end
+
+          startPoints(2, :) = hyp0;
 
           optproblem = struct( ...
             'solver', 'fmincon', ...
@@ -373,7 +386,14 @@ classdef OrdRegressionGP < handle
 
           for i = 1:size(startPoints, 1)
             optproblem.x0 = startPoints(i, :);
-            [minx, miny, exitflag, optinfo] = fmincon(optproblem);
+            try
+              [minx, miny, exitflag, optinfo] = fmincon(optproblem);
+            catch err
+              report = getReport(err);
+              warning('fmincon in trial %d failed with error:.\n%s', i, ...
+                report);
+              continue;
+            end
 
             if miny < obj.minNlp;
               obj.hyp.plsor = minx(1:length(obj.hyp.plsor));
