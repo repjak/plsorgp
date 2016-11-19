@@ -16,16 +16,19 @@ function [p, dp] = negLogPredProb(hyp, nHypCov, covFcn, cvPredProbFcn, X, y, n)
   end
 
   R = chol(K + sigma2 * eye(n));
+
   Kinv = cholinv(R); % R' * R * Kinv == eye(n)
   Kinvy = cholsolve(R, y); % K * Kinvy == y
+  Kinv2y = cholsolve(R, Kinvy); % K * Kinv * Kinvy = Kinvy
+  diagKinv2 = dot(Kinv, Kinv); % diag(Kinv * Kinv)
 
   if grad
-    ZKinv = zeros(size(dK)); % for Kinv * dK(l) * Kinv
+    diagZKinv = zeros(size(Kinv, 1), 1, size(dK, 3));
     ZKinvy = zeros(size(Kinv, 1), 1, size(dK, 3)); % for Kinv * dK(l) * Kinvy
     for l = 1:size(dK, 3)
       Z = cholsolve(R, dK(:, :, l)); % K * Z == dK
-      ZKinv(:, :, l) = cholsolve(R', Z', 'lower')'; % ZKinv * K = Z
-      ZKinvy(:, :, l) = Z * Kinvy;
+      diagZKinv(:, 1, l) = dot(Z, Kinv)'; % ZKinv * K = Z
+      ZKinvy(:, 1, l) = Z * Kinvy;
     end
   end
 
@@ -33,30 +36,27 @@ function [p, dp] = negLogPredProb(hyp, nHypCov, covFcn, cvPredProbFcn, X, y, n)
     % one iteration of the crossvalidation
     nlp1 = @(itr, ite) ...
       cvPredProbFcn(ite, y, hypPlsor, nHypCov, Kinv, Kinvy);
-
-    % crossvalidate
-    res = -sum(crval.crossval(nlp1, (1:n)'));
-    p = res(1); % the objective value
   else
     % gather all precomputed values for CV's gradient
     gradOpts = struct( ...
-      'dK', dK, ...
-      'ZKinv', ZKinv, ...
+      'diagZKinv', diagZKinv, ...
       'ZKinvy', ZKinvy, ...
-      'diagKinv2', dot(Kinv, Kinv'), ...
-      'Kinv2y', Kinv * Kinvy ...
+      'diagKinv2', diagKinv2, ...
+      'Kinv2y', Kinv2y ...
     );
 
     % one iteration of crossvalidation
     nlp1 = @(itr, ite) ...
       cvPredProbFcn(ite, y, hypPlsor, nHypCov, Kinv, Kinvy, gradOpts);
+  end
 
-    % crossvalidate
-    res = -sum(crval.crossval(nlp1, (1:n)'));
+  % crossvalidate
+  vals = crval.crossval(nlp1, (1:n)');
+  res = -sum(vals);
 
-    assert(all(size(res) == [1 length(hyp) + 1]));
+  p = res(1); % the objective value
 
-    p = res(1); % the objective value
+  if grad
     dp = res(2:end); % the gradient
   end
 end
