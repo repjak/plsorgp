@@ -13,8 +13,7 @@ rng(seed);
 % - 5 points from [14, 18] in category 4
 % - 1 point from [18, 20] in category 5
 %
-% The categories are defined so that y belongs to category i iff
-% 0 < y - i < 1.
+% The categories are defined by c(y) = floor(y).
 %
 % The model's response is tested on linearly spaced points between
 % 0 and 20.
@@ -31,7 +30,7 @@ for i = 1:size(intrvs, 1)
   ytr(es(i)+1:es(i+1)) = bins(i) + rand(1, freqs(i));
 end
 
-ytrBins = binning(ytr, length(bins));
+ytrBins = floor(ytr);
 
 Xte = linspace(0, 20, 200)';
 
@@ -42,12 +41,14 @@ t1 = toc;
 
 disp('Elapsed time:');
 disp(t1);
-disp('Minimum negative log probability:');
+disp('Minimal negative log probability:');
 disp(ordgp.MinimumNLP);
 disp('PLSOR hyperparameters:');
 disp(ordgp.PlsorParameters);
 disp('Covariance hyperparameters:');
 disp(ordgp.KernelParameters);
+disp('Sigma2:');
+disp(ordgp.Sigma2);
 disp('The best starting point:');
 disp(ordgp.OptimTrial);
 
@@ -62,13 +63,14 @@ disp(ordgp.OptimTrial);
 % Show the predicted mean and variance of the latent variables
 % and classification on some test points.
 
-h = figure();
-hold on;
 plot(Xtr, ytr, '+');
+hold on;
+grid on;
 xlim([0 20]);
+ylim([0 length(bins) + 1]);
 plot(Xte, mu, 'r-');
 plot(Xte, mu - sqrt(s2), 'b--');
 plot(Xte, mu + sqrt(s2), 'b--');
-plot(Xte(10:20:end), y(10:20:end), 'ro');
+plot(Xte(10:10:end), y(10:10:end), 'ro');
 legend('Training data', 'Mean', '+ std', '- std', 'Predicted class', ...
   'Location', 'southeast');
