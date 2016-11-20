@@ -2,6 +2,7 @@ function p = logPredProbLoo(i, y, hyp, nHypCov, Kinv, Kinvy, gradOpts)
 %LOGPREDLOO Log predictive probability of the ith training example using the
 %remaining training examples.
 
+  assert(length(hyp) >= 2);
   alpha = hyp(1);
   delta = hyp(3:end);
 
@@ -16,9 +17,9 @@ function p = logPredProbLoo(i, y, hyp, nHypCov, Kinv, Kinvy, gradOpts)
   muloo = y(i) - Kinvy(i) / Kinv(i, i);
   s2loo = 1 / Kinv(i, i);
 
-  p = log(predProb(y(i), hyp, muloo, s2loo));
-
-  if nargin >= 7
+  if nargin < 7
+    p = log(predProb(y(i), hyp, muloo, s2loo));
+  else
     diagZKinv = gradOpts.diagZKinv;
     ZKinvy = gradOpts.ZKinvy;
     diagKinv2 = gradOpts.diagKinv2;
@@ -37,132 +38,54 @@ function p = logPredProbLoo(i, y, hyp, nHypCov, Kinv, Kinvy, gradOpts)
     assert(all(size(diagKinv2) == [1 n]));
     assert(all(size(Kinv2y) == [n 1]));
 
-    % allocate space for partial derivatives
-    p = [p zeros(1, length(j))];
+    thetaj = j(j > length(hyp) & j <= length(hyp) + nHypCov + 1);
+    dmuloo = zeros(length(thetaj), 1);
+    ds2loo = zeros(length(thetaj), 1);
+
+    % partial derivatives of dmuloo and ds2loo
+    for l = 1:length(thetaj)
+      % the offset of covariance hyperparameters
+      m = thetaj(l) - length(hyp);
+
+      if m < nHypCov + 1
+        % dtheta
+        dmuloo(l) = (ZKinvy(i, 1, m) - ...
+          Kinvy(i) * diagZKinv(i, 1, m) / Kinv(i, i)) / Kinv(i, i);
+        ds2loo(l) = diagZKinv(i, 1, m) / Kinv(i, i)^2;
+      else
+        % dsigma2
+        dmuloo(l) = (Kinv2y(i) - ...
+          Kinvy(i) * diagKinv2(i) / Kinv(i, i)) / Kinv(i, i);
+        ds2loo(l) = diagKinv2(i) / Kinv(i, i)^2;
+      end
+    end
+
+    [pval, dp] = predProb(y(i), hyp, muloo, s2loo, dmuloo, ds2loo, j);
+
+    p = [log(pval) dp];
 
     if y(i) - 1 == 0 && y(i) == r
-      % if r == 1 then logprob == 0
+      % if r == 1 then logprob == 0 and all derivatives are zero
       return;
     elseif y(i) == 1 % y(i) - 1 == 0
       % logprob == log(normcdf(...))
-      [fi, dfi] = f(j);
-      [gi, dgi] = g(j);
-      for l = reshape(j, 1, numel(j))
-        d = dfi(l) * gi - dgi(l) * fi;
-        p(l+1) = (d * normpdf(fi/gi)) / (gi^2 * normcdf(fi/gi));
-      end
+      fi = alpha * muloo + betai(y(i), hyp);
+      gi = sqrt(1 + alpha^2 * s2loo);
+
+      p(2:end) = p(2:end) ./ normcdf(fi / gi);
     elseif y(i) == r
       % logprob == log(1 - normcdf(...))
-      [hi, dhi] = h(j);
-      [gi, dgi] = g(j);
-      for l = reshape(j, 1, numel(j))
-        d = dgi(l) * hi - dhi(l) * gi;
-        p(l+1) = (d * normpdf(hi/gi)) / (gi^2 * (1-normcdf(hi/gi)));
-      end
+      hi = alpha * muloo + betai(y(i) - 1, hyp);
+      gi = sqrt(1 + alpha^2 * s2loo);
+
+      p(2:end) = p(2:end) ./ (1 - normcdf(hi / gi));
     else
-      [fi, dfi] = f(j);
-      [hi, dhi] = h(j);
-      [gi, dgi] = g(j);
-      for l = reshape(j, 1, numel(j))
-        d1 = dfi(l) * gi - dgi(l) * fi;
-        d2 = dhi(l) * gi - dgi(l) * hi;
-        p(l+1) = (d1 * normpdf(fi/gi) - d2 * normpdf(hi/gi)) / ...
-          (gi^2 * (normcdf(fi/gi) - normcdf(hi/gi)));
-      end
+      fi = alpha * muloo + betai(y(i), hyp);
+      hi = alpha * muloo + betai(y(i)-1, hyp);
+      gi = sqrt(1 + alpha^2 * s2loo);
+
+      p(2:end) = p(2:end) ./ (normcdf(fi / gi) - normcdf(hi / gi));
     end
   end
-
-
-  function [z, df] = f(j)
-    z = alpha*muloo + betai(y(i), hyp);
-
-    if nargout == 1
-      return;
-    end
-
-    df = zeros(1, length(j));
-
-    for k = 1:length(j)
-      if j(k) == 1
-        %dalpha
-        df(k) = muloo;
-      elseif j(k) == 2 || j(k) <= length(hyp)
-        % dbeta1 or ddelta(j(k) - 1)
-        [~, db] = betai(y(i), hyp, j(k));
-        df(k) = db;
-      elseif j(k) <= length(hyp) + nHypCov
-        % dtheta(j(k) - length(hyp))
-        m = j(k) - length(hyp);
-        df(k) = dHypCov(alpha, Kinv(i, i), Kinvy(i), ...
-          diagZKinv(i, 1, m), ZKinvy(i, 1, m));
-      elseif j(k) == length(hyp) + nHypCov + 1
-        % dsigma2
-        df(k) = dHypCov(alpha, Kinv(i, i), Kinvy(i), ...
-          Kinv2y(i), diagKinv2(i));
-      end
-    end
-  end
-
-  function [z, dh] = h(j)
-    z = alpha*muloo + betai(y(i)-1, hyp);
-
-    if nargout == 1
-      return;
-    end
-
-    dh = zeros(1, length(j));
-
-    for k = 1:length(j)
-      if j(k) == 1
-        % dalpha
-        dh(k) = muloo;
-      elseif j(k) == 2 || j(k) <= length(hyp)
-        % dbeta1 or ddelta(j(k) - 1)
-        [~, db] = betai(y(i), hyp, j(k));
-        dh(k) = db;
-      elseif j(k) <= length(hyp) + nHypCov
-        % dtheta(j(k) - length(hyp))
-        m = j(k) - length(hyp);
-        dh(k) = dHypCov(alpha, Kinv(i, i), Kinvy(i), ...
-          diagZKinv(i, 1, m), ZKinvy(i, 1, m));
-      elseif j(k) == length(hyp) + nHypCov + 1
-        % dsigma2
-        dh(k) = dHypCov(alpha, Kinv(i, i), Kinvy(i), ...
-          Kinv2y(i), diagKinv2(i));
-      end
-    end
-  end
-
-  function d = dHypCov(alpha, Kinvii, Kinvyi, ZKinvii, ZKinvyi)
-    d = (alpha / Kinvii) * (ZKinvyi - Kinvyi * ZKinvii / Kinvii);
-  end
-
-  function [z, dg] = g(j)
-    z = sqrt(1 + alpha^2 * s2loo);
-
-    if nargout == 1
-      return;
-    end
-
-    dg = zeros(1, length(j));
-
-    for k = reshape(j, 1, numel(j))
-      if j(k) == 1
-        % dalpha
-        dg(k) = alpha * s2loo / z;
-      elseif j(k) == 2 || j(k) <= length(hyp)
-        % dbeta1 or ddelta(j(k) - 1)
-        dg(k) = 0;
-      elseif j(k) <= length(hyp) + nHypCov
-        % dtheta(j(k) - length(hyp))
-        m = j(k) - length(hyp);
-        dg(k) = (alpha^2 * diagZKinv(i, 1, m)) / (2 * z * Kinv(i, i)^2);
-      elseif j(k) == length(hyp) + nHypCov + 1
-        % dsigma2
-        dg(k) = (alpha^2 * diagKinv2(i)) / (2 * z * Kinv(i, i)^2);
-      end
-    end
-  end
-
 end
 
