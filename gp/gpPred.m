@@ -43,10 +43,11 @@ function [mu, s2] = gpPred(X, y, Xnew, covFcn, hyp, sigma2, varargin)
     kss = covFcn(Xnew, 'diag', hyp);
     assert(all(size(kss) == [m 1]));
 
-    v = cholsolve(R, Ks);
+    v = R' \ Ks;
     assert(all(size(v) == [n m]));
 
-    s2 = abs(kss - dot(v, v)');
+    s2 = kss - dot(v, v)';
+    assert(all(s2 >= 0));
     assert(all(size(s2) == [m 1]));
   end
 end
