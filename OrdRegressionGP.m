@@ -18,6 +18,7 @@ classdef OrdRegressionGP < handle
     optRes              % a structure of optimization results
     lossFcn             % a loss function for predictions
     fitMethod = 'exact' % the fitting method, either 'exact' or 'none'
+    nRandomPoints = 2   % the number of random initial points for fitting
     standardize = true  % standardize the training data
     optimopts           % optimizer options
     minNlp = Inf        % the optimal negative log probability
@@ -161,7 +162,7 @@ classdef OrdRegressionGP < handle
               error('Kernel function ''%s'' takes 2 hyperparameters.', ...
                 p.Results.KernelFunction);
             elseif isempty(obj.hyp.cov)
-              obj.hyp.cov = [1 sqrt(1/obj.d)];
+              obj.hyp.cov = [1 sqrt(obj.d)];
             else
               obj.hyp.cov = reshape(obj.hyp.cov, 1, numel(obj.hyp.cov));
             end
@@ -171,7 +172,7 @@ classdef OrdRegressionGP < handle
               error('Kernel function ''%s'' takes dim + 2 hyperparameters.', ...
                 p.Results.KernelFunction);
             elseif isempty(obj.hyp.cov)
-              obj.hyp.cov = [1 ones(obj.d, 1)/obj.d];
+              obj.hyp.cov = [1 sqrt(ones(obj.d, 1)/obj.d)];
             else
               obj.hyp.cov = reshape(obj.hyp.cov, 1, numel(obj.hyp.cov));
             end
@@ -240,7 +241,9 @@ classdef OrdRegressionGP < handle
         obj.optimopts = optimoptions( ...
           @fmincon, ...
           'GradObj', 'on', ...
-          'Display', 'off' ...
+          'Display', 'final', ...
+          'MaxIter', 3e3, ...
+          'Algorithm', 'interior-point' ...
         );
       else
         obj.optimopts = p.Results.OptimizerOptions;
@@ -363,19 +366,21 @@ classdef OrdRegressionGP < handle
 
           startPoints(1, :) = [1 0 ones(1, obj.r - 2) obj.hyp.cov obj.hyp.sigma2];
 
-          undef = true;
+          for i = 2:(obj.nRandomPoints + 1)
+            undef = true;
 
-          while undef
-            b = sort(1.5 * (obj.r - 1) * rand(1, obj.r - 1));
-            alpha = 4 * rand() - 2;
-            beta1 = 2 * rand() - 1;
-            delta = arrayfun(@(i) b(i) - b(i - 1), 2:(obj.r - 1));
-            hyp0 = [alpha beta1 delta obj.hyp.cov obj.hyp.sigma2];
-            y0 = obj.nlpFcn(hyp0);
-            undef = isinf(y0) || isnan(y0);
+            while undef
+              b = sort(2 * (obj.r - 1) * rand(1, obj.r - 1));
+              alpha = 4 * rand() - 2;
+              beta1 = 2 * rand() - 1;
+              delta = arrayfun(@(i) b(i) - b(i - 1), 2:(obj.r - 1));
+              hyp0 = [alpha beta1 delta obj.hyp.cov obj.hyp.sigma2];
+              y0 = obj.nlpFcn(hyp0);
+              undef = isinf(y0) || isnan(y0);
+            end
+
+            startPoints(i, :) = hyp0;
           end
-
-          startPoints(2, :) = hyp0;
 
           optproblem = struct( ...
             'solver', 'fmincon', ...
