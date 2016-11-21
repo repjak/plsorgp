@@ -21,14 +21,14 @@ function [p, dp] = negLogPredProb(hyp, nHypCov, covFcn, cvPredProbFcn, X, y, n)
 
   if grad
     Kinv2y = cholsolve(R, Kinvy); % K * Kinv * Kinvy = Kinvy
-    diagKinv2 = dot(Kinv, Kinv); % diag(Kinv * Kinv)
+    diagKinv2 = dot(Kinv', Kinv); % diag(Kinv * Kinv)
 
     diagZKinv = zeros(size(Kinv, 1), 1, size(dK, 3));
     ZKinvy = zeros(size(Kinv, 1), 1, size(dK, 3)); % for Kinv * dK(l) * Kinvy
 
     for l = 1:size(dK, 3)
       Z = cholsolve(R, dK(:, :, l)); % K * Z == dK(:, :, l)
-      diagZKinv(:, 1, l) = dot(Z, Kinv)'; % ZKinv * K = Z
+      diagZKinv(:, 1, l) = dot(Z', Kinv)'; % ZKinv * K = Z
       ZKinvy(:, 1, l) = Z * Kinvy;
     end
   end
