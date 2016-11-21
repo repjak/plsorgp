@@ -62,30 +62,7 @@ function p = logPredProbLoo(i, y, hyp, nHypCov, Kinv, Kinvy, gradOpts)
 
     [pval, dp] = predProb(y(i), hyp, muloo, s2loo, dmuloo, ds2loo, j);
 
-    p = [log(pval) dp];
-
-    if y(i) - 1 == 0 && y(i) == r
-      % if r == 1 then logprob == 0 and all derivatives are zero
-      return;
-    elseif y(i) == 1 % y(i) - 1 == 0
-      % logprob == log(normcdf(...))
-      fi = alpha * muloo + betai(y(i), hyp);
-      gi = sqrt(1 + alpha^2 * s2loo);
-
-      p(2:end) = p(2:end) ./ normcdf(fi / gi);
-    elseif y(i) == r
-      % logprob == log(1 - normcdf(...))
-      hi = alpha * muloo + betai(y(i) - 1, hyp);
-      gi = sqrt(1 + alpha^2 * s2loo);
-
-      p(2:end) = p(2:end) ./ (1 - normcdf(hi / gi));
-    else
-      fi = alpha * muloo + betai(y(i), hyp);
-      hi = alpha * muloo + betai(y(i)-1, hyp);
-      gi = sqrt(1 + alpha^2 * s2loo);
-
-      p(2:end) = p(2:end) ./ (normcdf(fi / gi) - normcdf(hi / gi));
-    end
+    p = [log(pval) dp ./ pval];
   end
 end
 
