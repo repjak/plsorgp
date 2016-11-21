@@ -35,15 +35,15 @@ function [p, dp] = predProb(y, hyp, mu, s2, dmu, ds2, j)
 
     for i = 1:length(y)
       if y(i) - 1 == 0 && y(i) == r
-        % if r == 1 then logprob == 0
+        % if r == 1 then prob == 1
         continue;
       elseif y(i) == 1
-        % logprob == log(normcdf(...))
+        % prob == normcdf(...) - 0
         [fi, dfi] = f(y(i), hyp, mu, dmu, j);
         [gi, dgi] = g(y(i), hyp, s2, ds2, j);
         dp(i, :) = normpdf(fi/gi) * (dfi * gi - dgi * fi) / gi^2;
       elseif y(i) == r
-        % logprob == log(1 - normcdf(...))
+        % prob == 1 - normcdf(...)
         [hi, dhi] = h(y(i), hyp, mu, dmu, j);
         [gi, dgi] = g(y(i), hyp, s2, ds2, j);
         dp(i, :) = normpdf(hi/gi) * (dgi * hi - dhi * gi) / gi^2;
@@ -117,7 +117,7 @@ function [p, dp] = predProb(y, hyp, mu, s2, dmu, ds2, j)
 
     dg = zeros(1, length(j));
 
-    for k = reshape(j, 1, numel(j))
+    for k = 1:length(j)
       if j(k) == 1
         % dalpha
         dg(k) = alpha * s2 / z;
