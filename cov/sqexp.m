@@ -84,14 +84,15 @@ function [Kmn, dKmn] = sqexp(Xm, z, theta, j)
 
     Kmn = sigma^2 * exp(-Kmn / 2);
 
-    for k = reshape(j, 1, numel(j))
-      switch k
+    for k = 1:length(j)
+      switch j(k)
         case 1
-          dKmn(:, :, k) = 2 * sigma * exp(-dKmn(:, :, k)/2);
+          dKmn(:, :, k) = 2 * sigma * exp(-dKmn(:, :, j(k))/2);
         case 2
-          dKmn(:, :, k) = sigma^2 * exp(-dKmn(:, :, k)/2) .* (dKmn(:, :, k)./l);
+          dKmn(:, :, k) = sigma^2 * exp(-dKmn(:, :, j(k))/2) .* ...
+            (dKmn(:, :, j(k))./l);
         otherwise
-          error('Hyperparameter index %d out of range.', k);
+          error('Hyperparameter index %d out of range.', j(k));
       end
     end
   end
