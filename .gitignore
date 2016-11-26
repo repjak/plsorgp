@@ -4,3 +4,4 @@
 *.mexw64
 *.conf
 *~
+scripts/html
