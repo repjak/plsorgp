@@ -12,13 +12,15 @@ classdef OrdRegressionGP < handle
     ys                  % response values transformed into classes 1:r
     covFcn              % the covariance function
     hyp = struct()      % a structure of model's hyperparameters
+    lb = struct()       % hyperparameters lower bounds
+    ub = struct()       % hyperparameters upper bounds
     nHyp                % hyperparameters total
     nHypCov             % the number of the covariance fcn's hyperparameters
     nlpFcn              % the negative log probability (a pseudo likelihood)
     optRes              % a structure of optimization results
     lossFcn             % a loss function for predictions
     fitMethod = 'exact' % the fitting method, either 'exact' or 'none'
-    nRandomPoints = 2   % the number of random initial points for fitting
+    nRandomPoints = 1   % the number of random initial points for fitting
     standardize = true  % standardize the training data
     optimopts           % optimizer options
     minNlp = Inf        % the optimal negative log probability
@@ -188,23 +190,34 @@ classdef OrdRegressionGP < handle
         end
       end
 
+      obj.lb.cov = min(obj.hyp.cov, ...
+        1e-3 + zeros(1, length(obj.hyp.cov)));
+      obj.ub.cov = max(obj.hyp.cov, ...
+        1e1 + zeros(1, length(obj.hyp.cov)));
+
       obj.nHypCov = length(obj.hyp.cov);
 
       % set the noise hyperparameter
       if p.Results.Sigma2 == 0
         obj.hyp.sigma2 = var(obj.ys) / 2;
       else
-        obj.hyp.sigma2 = p.Results.SigmaNoise;
+        obj.hyp.sigma2 = p.Results.Sigma2;
       end
+
+      obj.lb.sigma2 = min(obj.hyp.sigma2, 1e-9);
+      obj.ub.sigma2 = max(obj.hyp.sigma2, 2 * var(obj.ys));
 
       % set default plsor values
       if isempty(obj.hyp.plsor)
         alpha = 1;
-        % deltas = repmat(ceil(range(obj.ys) / obj.r), 1, obj.r - 2);
-        deltas = repmat(2 / obj.r, 1, obj.r - 2);
+        delta = repmat(2 / obj.r, 1, obj.r - 2);
         beta1 = -1;
-        obj.hyp.plsor = [alpha beta1 deltas];
+        obj.hyp.plsor = [alpha beta1 delta];
       end
+
+      obj.lb.plsor = min(obj.hyp.plsor, ...
+        [-Inf -Inf 1e-9 + zeros(1, length(obj.hyp.plsor)-2)]);
+      obj.ub.plsor = Inf(1, length(obj.hyp.plsor));
 
       obj.nHyp = length(obj.hyp.cov) + length(obj.hyp.plsor) + 1;
 
@@ -231,8 +244,8 @@ classdef OrdRegressionGP < handle
           y = obj.ys;
           n = obj.n;
 
-          obj.nlpFcn = @(hyp) negLogPredProb(...
-            hyp, nHypCov, covFcn, @logPredProbLoo, X, y, n);
+          obj.nlpFcn = @(hyp) ...
+            negLogPredProb(hyp, nHypCov, covFcn, X, y, n);
         otherwise
           error('Cross-validation ''%s'' not supported.', p.Results.CrossVal);
       end
@@ -241,7 +254,7 @@ classdef OrdRegressionGP < handle
         obj.optimopts = optimoptions( ...
           @fmincon, ...
           'GradObj', 'on', ...
-          'Display', 'final', ...
+          'Display', 'off', ...
           'MaxIter', 3e3, ...
           'Algorithm', 'interior-point' ...
         );
@@ -285,7 +298,8 @@ classdef OrdRegressionGP < handle
       % probabilistic predictions for all classes and all test data
       P = zeros(m, obj.r);
       for i = 1:m
-        P(i, :) = predProb(1:obj.r, obj.hyp.plsor, mu(i), s2(i));
+        P(i, :) = predProb(1:obj.r, obj.hyp.plsor, ...
+          repmat(mu(i), obj.r, 1), repmat(s2(i), obj.r, 1));
       end
 
       [~, idx, predProbs] = obj.lossFcn(P);
@@ -357,14 +371,8 @@ classdef OrdRegressionGP < handle
     function fit(obj)
       switch obj.fitMethod
         case 'exact'
-          lb = [-Inf -Inf ...
-            1e-3+[zeros(1, length(obj.hyp.plsor)-2) ...
-            zeros(1, obj.nHypCov + 1)]];
-
           startPoints = zeros(2, obj.nHyp);
-          % startPoints(1, :) = [obj.hyp.plsor obj.hyp.cov obj.hyp.sigma2];
-
-          startPoints(1, :) = [1 0 ones(1, obj.r - 2) obj.hyp.cov obj.hyp.sigma2];
+          startPoints(1, :) = [obj.hyp.plsor obj.hyp.cov sqrt(obj.hyp.sigma2)];
 
           for i = 2:(obj.nRandomPoints + 1)
             undef = true;
@@ -374,7 +382,7 @@ classdef OrdRegressionGP < handle
               alpha = 4 * rand() - 2;
               beta1 = 2 * rand() - 1;
               delta = arrayfun(@(i) b(i) - b(i - 1), 2:(obj.r - 1));
-              hyp0 = [alpha beta1 delta obj.hyp.cov obj.hyp.sigma2];
+              hyp0 = [alpha beta1 delta obj.hyp.cov sqrt(obj.hyp.sigma2)];
               y0 = obj.nlpFcn(hyp0);
               undef = isinf(y0) || isnan(y0);
             end
@@ -385,25 +393,31 @@ classdef OrdRegressionGP < handle
           optproblem = struct( ...
             'solver', 'fmincon', ...
             'objective', obj.nlpFcn, ...
-            'lb', lb, ...
+            'lb', [obj.lb.plsor obj.lb.cov obj.lb.sigma2], ...
+            'ub', [obj.ub.plsor obj.ub.cov obj.ub.sigma2], ...
             'options', obj.optimopts ...
           );
 
           for i = 1:size(startPoints, 1)
             optproblem.x0 = startPoints(i, :);
+
+            warning('off', 'MATLAB:nearlySingularMatrix');
+
             try
               [minx, miny, exitflag, optinfo] = fmincon(optproblem);
             catch err
               report = getReport(err);
-              warning('fmincon in trial %d failed with error:.\n%s', i, ...
+              warning('fmincon in trial %d failed with error:\n%s', i, ...
                 report);
               continue;
             end
 
+            warning('on', 'MATLAB:nearlySingularMatrix');
+
             if miny < obj.minNlp;
               obj.hyp.plsor = minx(1:length(obj.hyp.plsor));
               obj.hyp.cov = minx(length(obj.hyp.plsor)+1:end-1);
-              obj.hyp.sigma2 = minx(end);
+              obj.hyp.sigma2 = minx(end)^2;
 
               obj.minNlp = miny;
               obj.OptimInfo = optinfo;
