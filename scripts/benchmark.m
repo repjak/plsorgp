@@ -3,6 +3,7 @@ seed = 2;
 rng(seed);
 
 mpath = mfilename('fullpath');
+addpath(fullfile(fileparts(mpath), 'util/'));
 datapath = fullfile(fileparts(mpath), 'data/');
 outpath = fullfile(fileparts(mpath), 'results/');
 
