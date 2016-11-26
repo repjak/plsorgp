@@ -5,35 +5,38 @@ function [datasets, dataInfo] = preprocData(datapath, datasets)
 
   for i = 1:length(datasets)
     filename = fullfile(datapath, datasets(i).filename);
+    [~, basename] = fileparts(filename);
+    csvfilename = fullfile(datapath, [basename '.csv']);
 
-    % the whole file is read into memory
-    text = fileread(filename);
+    if ~exist(csvfilename, 'file')
+      fprintf('Writing a csv file: %s\n', csvfilename);
 
-    % remove leading white spaces
-    text = regexprep(text, '^\s*', '');
-    text = regexprep(text, '\n\s*', '\n');
+      % read the whole file into memory
+      text = fileread(filename);
 
-    % unify delimiters
-    if isempty(strfind(text, ','))
-      repl = ',';
-    else
-      repl = '';
+      % remove leading white spaces
+      text = regexprep(text, '^\s*', '');
+      text = regexprep(text, '\n\s*', '\n');
+
+      % unify delimiters
+      if isempty(strfind(text, ','))
+        repl = ',';
+      else
+        repl = '';
+      end
+
+      % reduce redundant white spaces assuming no empty fields
+      text = regexprep(text, '([\t ])+', repl);
+
+      % write the csv file
+      fid = fopen(csvfilename, 'w');
+      fprintf(fid, '%s', text);
+      fclose(fid);
     end
 
-    % reduce redundant white spaces assuming no empty fields
-    text = regexprep(text, '([\t ])+', repl);
-
-    % create a temporary csv file for readtable
-    fid = fopen([filename '.csv'], 'w');
-    fprintf(fid, '%s', text);
-    fclose(fid);
-
-    datasets(i).tbl = readtable([filename '.csv'], 'Delimiter', ',', ...
+    datasets(i).tbl = readtable(csvfilename, 'Delimiter', ',', ...
       'ReadVariableNames', false ...
     );
-
-    % delete the temporary csv file
-    delete([filename '.csv']);
 
     dataset = datasets(i);
     te = dataset.holdout;
