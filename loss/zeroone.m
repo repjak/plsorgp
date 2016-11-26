@@ -4,7 +4,7 @@ function [minLoss, idx, predProbs, losses] = zeroone(P)
 %   over all other classes. The loss is effectively minimized by finding
 %   the mode of the predicted distribution.
 %
-%   See also LOSS, HINGE.
+%   See also LOSS, ABSERR.
 
   assert(isempty(P) || all(abs(sum(P, 2) - 1) <= 1e-4));
 

@@ -20,8 +20,8 @@ classdef LossTest < matlab.unittest.TestCase
       testCase.verifyError(@() zeroone([1 1]), 'MATLAB:assertion:failed');
     end
 
-    function hingeTest(testCase)
-      [actMinLoss, actIdx, actPredProbs, actLosses] = hinge([0.4 0.3 0.3]);
+    function abserrTest(testCase)
+      [actMinLoss, actIdx, actPredProbs, actLosses] = abserr([0.4 0.3 0.3]);
 
       expMinLoss = 0.2333;
       expIdx = 2;
@@ -33,9 +33,9 @@ classdef LossTest < matlab.unittest.TestCase
       testCase.verifyEqual(actPredProbs, expPredProbs, 'AbsTol', 1e-2);
       testCase.verifyEqual(actLosses, expLosses, 'AbsTol', 1e-2);
 
-      hinge([]);
-      hinge(1);
-      testCase.verifyError(@() hinge([1 1]), 'MATLAB:assertion:failed');
+      abserr([]);
+      abserr(1);
+      testCase.verifyError(@() abserr([1 1]), 'MATLAB:assertion:failed');
     end
 
     function lossTest(testCase)

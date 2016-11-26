@@ -92,7 +92,7 @@ classdef OrdRegressionGP < handle
       p.addParameter('OptimizerOptions', [], ...
         @(x) isa(x, 'optim.options.Fmincon'));
       p.addParameter('LossFunction', 'zeroone', ...
-        @(x) (ischar(x) && ismember(x, {'zeroone', 'hinge'})) || ...
+        @(x) (ischar(x) && ismember(x, {'zeroone', 'abserr'})) || ...
         isa(x, 'function_handle'));
 
       if nargin >= 3 && iscell(varargin{1})
@@ -225,8 +225,8 @@ classdef OrdRegressionGP < handle
         switch p.Results.LossFunction
           case 'zeroone'
             obj.lossFcn = @zeroone;
-          case 'hinge'
-            obj.lossFcn = @hinge;
+          case 'abserr'
+            obj.lossFcn = @abserr;
           otherwise
             error('Unknown loss function ''%s''.', p.Results.LossFunction);
         end

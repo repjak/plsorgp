@@ -9,13 +9,14 @@ function [minLoss, idx, predProbs, losses] = loss(P, L)
 %   R ordinal classes (ordered).
 %
 %   Returns the following vectors:
-%   minLoss   -- a row vector of minimal losses for each prediction
-%   idx       -- the indices of the predicted classes
-%   predProbs -- the predicted probability values
-%   losses    -- an N-R matrix of column vector of losses per each
+%
+%      minLoss   -- a row vector of minimal losses for each prediction
+%      idx       -- the indices of the predicted classes
+%      predProbs -- the predicted probability values
+%      losses    -- an N-R matrix of column vector of losses per each
 %                prediction
 %
-%   See also HINGE, ZEROONE.
+%   See also ABSERR, ZEROONE.
 
   assert(isempty(P) || all(abs(sum(P, 2) - 1) <= 1e-4));
 
