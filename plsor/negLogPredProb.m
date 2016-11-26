@@ -1,11 +1,18 @@
-function [p, dp] = negLogPredProb(hyp, nHypCov, covFcn, cvPredProbFcn, X, y, n)
+function [logp, dlogp] = negLogPredProb(hyp, nHypCov, covFcn, X, y, n, dbg)
 %NEGLOGPREDPROB The objective function that is to be optimized.
+
+  if nargin < 8
+    dbg = false;
+  end
+
+  errtol = 1e-4;
 
   hypPlsor = hyp(1:end-1-nHypCov);
   hypCov = hyp(end-nHypCov:end-1);
-  sigma2 = hyp(end);
+  sigman = hyp(end);
+  sigman2 = sigman^2;
 
-  % the covariance matrix and its gradiend if required
+  % the covariance matrix and its gradient if required
   if nargout >= 2
     [K, dK] = covFcn(X, X, hypCov);
     grad = true;
@@ -14,51 +21,53 @@ function [p, dp] = negLogPredProb(hyp, nHypCov, covFcn, cvPredProbFcn, X, y, n)
     grad = false;
   end
 
-  R = chol(K + sigma2 * eye(n));
+  % (K + sigman2 * eye(n)) / sigman2 == R' * R
+  R = chol(K + sigman2 * eye(n)) / sigman;
 
-  Kinv = cholinv(R); % R' * R * Kinv == eye(n)
-  Kinvy = cholsolve(R, y); % K * Kinvy == y
+  V = R' \ (1./sigman * eye(n));
+  diagKinv = dot(V, V)'; % diagKinv = diag(inv(K + sigman2 * eye(n)))
+  assert(~dbg || ...
+    sum(abs(diagKinv - diag(cholinv(R) ./ sigman2))) < n*errtol);
+
+  Kinvy = cholsolve(R, y) / sigman2; % (K + sigman2 * eye(n)) * Kinvy == y
+  assert(~dbg || sum(abs(Kinvy - (cholinv(R) ./ sigman2) * y)) < n*errtol);
+
+  muloo = y - Kinvy ./ diagKinv;
+  s2loo = 1 ./ diagKinv - sigman2;
+
+  if dbg
+    i0 = randi(n);
+    idx = [1:(i0 - 1) (i0 + 1):n];
+    [muloo0, s2loo0] = gpPred(X(idx, :), y(idx), X(i0, :), covFcn, ...
+      hypCov, sigman2);
+    assert(sum(abs([muloo0 s2loo0] - [muloo(i0) s2loo(i0)])) <= n*errtol);
+  end
 
   if grad
-    Kinv2y = cholsolve(R, Kinvy); % K * Kinv * Kinvy = Kinvy
-    diagKinv2 = dot(Kinv', Kinv); % diag(Kinv * Kinv)
+    Kinv = cholinv(R) / sigman2;
 
-    diagZKinv = zeros(size(Kinv, 1), 1, size(dK, 3));
-    ZKinvy = zeros(size(Kinv, 1), 1, size(dK, 3)); % for Kinv * dK(l) * Kinvy
+    ds2loo = zeros(n, nHypCov + 1);
+    dmuloo = zeros(n, nHypCov + 1);
+
+    dK(:, :, end+1) = 2 * sigman * eye(n);
 
     for l = 1:size(dK, 3)
-      Z = cholsolve(R, dK(:, :, l)); % K * Z == dK(:, :, l)
-      diagZKinv(:, 1, l) = dot(Z', Kinv)'; % ZKinv * K = Z
-      ZKinvy(:, 1, l) = Z * Kinvy;
+      Z = cholsolve(R, dK(:, :, l)) ./ sigman2; % K * Z == dK(:, :, l)
+      ds2loo1 = dot(Z', Kinv)' ./ (diagKinv.^2);
+	    dmuloo(:, l) = (Z * Kinvy) ./ diagKinv - Kinvy .* ds2loo1;
+      ds2loo(:, l) = ds2loo1;
     end
-  end
 
-  if ~grad
-    % one iteration of the crossvalidation
-    nlp1 = @(itr, ite) ...
-      cvPredProbFcn(ite, y, hypPlsor, nHypCov, Kinv, Kinvy);
+    ds2loo(:, end) = ds2loo(:, end) - 2 * sigman;
+
+    [p, dp] = predProb(y, hypPlsor, muloo, s2loo, dmuloo, ds2loo);
+
+    logp = -sum(reallog(p));
+    dlogp = -sum(bsxfun(@rdivide, dp, p), 1);
   else
-    % gather all precomputed values for CV's gradient
-    gradOpts = struct( ...
-      'diagZKinv', diagZKinv, ...
-      'ZKinvy', ZKinvy, ...
-      'diagKinv2', diagKinv2, ...
-      'Kinv2y', Kinv2y ...
-    );
+    p = predProb(y, hypPlsor, muloo, s2loo);
 
-    % one iteration of crossvalidation
-    nlp1 = @(itr, ite) ...
-      cvPredProbFcn(ite, y, hypPlsor, nHypCov, Kinv, Kinvy, gradOpts);
-  end
-
-  % crossvalidate
-  vals = crval.crossval(nlp1, (1:n)');
-  res = -sum(vals);
-
-  p = res(1); % the objective value
-
-  if grad
-    dp = res(2:end); % the gradient
+    logp = -sum(reallog(p));
   end
 end
 
