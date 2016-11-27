@@ -17,7 +17,8 @@ function [Kmn, dKmn] = sqexp(Xm, z, theta, j)
 %
 %      Xm    -- an m-d matrix of m examples with dimensionality d
 %      Xn    -- an n-d matrix
-%      theta -- a vector of 2 hyperparameters, theta = [sigma; l]
+%      theta -- a vector of 2 hyperparameters,
+%               theta = [log(sigma^2); log(l)]
 %      j     -- a vector of hyperparameter indices
 %
 %   The output is a m-n matrix of cross-covariances or a m-1 vector of
@@ -49,12 +50,16 @@ function [Kmn, dKmn] = sqexp(Xm, z, theta, j)
     end
   end
 
-  if length(theta) ~= 2 || any(theta) <= 0
-    error('The squared exponential expects a column vector of 2 positive hyperparameters.');
+  if length(theta) ~= 2
+    error('The squared exponential expects a vector of 2 hyperparameters.');
   end
 
-  sigma = theta(1);
-  l = theta(2);
+  sigma2 = exp(2 * theta(1));
+  l = exp(theta(2));
+
+  if any([sigma2; l] <= 0)
+    error('Hyperparameters must be positive.');
+  end
 
   if diag
     % self-covariances
@@ -73,7 +78,7 @@ function [Kmn, dKmn] = sqexp(Xm, z, theta, j)
   end
 
   if nargout < 2
-    Kmn = sigma^2 * exp(-Kmn / 2);
+    Kmn = sigma2 * exp(-Kmn / 2);
   else
     if nargin < 4
       j = 1:2;
@@ -82,15 +87,15 @@ function [Kmn, dKmn] = sqexp(Xm, z, theta, j)
     % for the partial derivatives
     dKmn = repmat(Kmn, 1, 1, length(j));
 
-    Kmn = sigma^2 * exp(-Kmn / 2);
+    Kmn = sigma2 * exp(-Kmn / 2);
 
     for k = 1:length(j)
       switch j(k)
         case 1
-          dKmn(:, :, k) = 2 * sigma * exp(-dKmn(:, :, k)/2);
+          dKmn(:, :, k) = 2 * sigma2 * exp(-dKmn(:, :, k)/2);
         case 2
-          dKmn(:, :, k) = sigma^2 * exp(-dKmn(:, :, k)/2) .* ...
-            (dKmn(:, :, k)./l);
+          dKmn(:, :, k) = sigma2 * exp(-dKmn(:, :, k)/2) .* ...
+            dKmn(:, :, k);
         otherwise
           error('Hyperparameter index %d out of range.', j(k));
       end

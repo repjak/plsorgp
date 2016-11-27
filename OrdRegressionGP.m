@@ -164,20 +164,25 @@ classdef OrdRegressionGP < handle
               error('Kernel function ''%s'' takes 2 hyperparameters.', ...
                 p.Results.KernelFunction);
             elseif isempty(obj.hyp.cov)
-              obj.hyp.cov = [1 sqrt(obj.d)];
+              obj.hyp.cov = log([1 sqrt(obj.d)]);
             else
               obj.hyp.cov = reshape(obj.hyp.cov, 1, numel(obj.hyp.cov));
             end
+
+            obj.ub.cov = max(obj.hyp.cov, log([sqrt(1e1) 1e1]));
           case 'ardsquaredexponential'
             obj.covFcn = @sqexpard;
             if ~isempty(obj.hyp.cov) && length(obj.hyp.cov) ~= d + 1
               error('Kernel function ''%s'' takes dim + 2 hyperparameters.', ...
                 p.Results.KernelFunction);
             elseif isempty(obj.hyp.cov)
-              obj.hyp.cov = [1 sqrt(ones(obj.d, 1)/obj.d)];
+              obj.hyp.cov = log([1 ones(1, obj.d)]);
             else
               obj.hyp.cov = reshape(obj.hyp.cov, 1, numel(obj.hyp.cov));
             end
+
+            obj.ub.cov = max(obj.hyp.cov, ...
+              log([sqrt(1e1) 1e1 * ones(1, obj.d) / sqrt(obj.d)]));
           otherwise
             error('Unknown kernel function ''%s''.', p.Results.KernelFunction);
         end
@@ -188,12 +193,13 @@ classdef OrdRegressionGP < handle
           error('No hyperparameters for a user supplied kernel function ''%s''.', ...
             covFcnInfo.function);
         end
+
+        obj.ub.cov = max(obj.hyp.cov, ...
+          1e1 + zeros(1, length(obj.hyp.cov)));
       end
 
       obj.lb.cov = min(obj.hyp.cov, ...
-        1e-3 + zeros(1, length(obj.hyp.cov)));
-      obj.ub.cov = max(obj.hyp.cov, ...
-        1e1 + zeros(1, length(obj.hyp.cov)));
+        log([sqrt(1e-3) 1e-3 * ones(1, length(obj.hyp.cov) - 1)]));
 
       obj.nHypCov = length(obj.hyp.cov);
 
@@ -310,7 +316,12 @@ classdef OrdRegressionGP < handle
     end
 
     function hyp = get.KernelParameters(obj)
-      hyp = obj.hyp.cov;
+      s = functions(obj.covFcn);
+      if strcmp(s, 'sqexp') || strcmp(s, 'sqexpard')
+        hyp = [exp(2 * obj.hyp.cov(1)) exp(obj.hyp.cov(2:end))];
+      else
+        hyp = obj.hyp.cov;
+      end
     end
 
     function hyp = get.PlsorParameters(obj)
