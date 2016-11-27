@@ -2,6 +2,9 @@
 seed = 2;
 rng(seed);
 
+% don't actually run the benchmarks
+dry = true;
+
 mpath = mfilename('fullpath');
 addpath(fullfile(fileparts(mpath), 'util/'));
 datapath = fullfile(fileparts(mpath), 'data/');
@@ -10,6 +13,11 @@ outpath = fullfile(fileparts(mpath), 'results/');
 if ~isdir(outpath)
   mkdir(outpath)
 end
+
+%% Data
+% Datasets for benchmarking are downloaded from Chu Wei's website
+% <http://www.gatsby.ucl.ac.uk/~chuwei/ordinalregression.html
+% Benchmarking of Ordinal Regression>.
 
 datasets = struct(...
   'url', { ...
@@ -25,7 +33,7 @@ datasets = struct(...
   }, ...
   'name', { ...
     'Diabetes', ...
-    'Pyrimidines', ...
+    'Pyrimidine', ...
     'Triazines', ...
     'Wisconsin', ...
     'Machine', ...
@@ -54,33 +62,58 @@ datasets = datasets(1:2);
 nDatasets = length(datasets);
 downloadData(datapath, datasets);
 [datasets, dataInfo] = preprocData(datapath, datasets);
+
 disp(dataInfo);
 
-% a table with results will be generated for each bin size
-% bins = [5, 10];
-bins = [5];
-nBins = length(bins);
-
-% a number of Monte-Carlo repetitions in crossvalidation
-nReps = 20;
+%% Tested models
+% Tested model settings:
 
 % tested algorithm settings
 models = struct(...
   'name', ...
     { ...
-      'PLSOR_SE' ...
-      %'PLSOR_SEARD' ...
+      %'PLSOR_SE_ZEROONE' ...
+      %'PLSOR_SE_ABSERR' ...
+      'PLSOR_SEARD' ...
     }, ...
   'settings', ...
     { ...
-      {'KernelFunction', 'squaredexponential'} ...
-      %{'KernelFunction', 'ardsquaredexponential'} ...
+      %{'KernelFunction', 'squaredexponential', 'LossFunction', 'zeroone'} ...
+      %{'KernelFunction', 'squaredexponential', 'LossFunction', 'abserr'} ...
+      {'KernelFunction', 'ardsquaredexponential'} ...
     } ...
 );
 nModels = length(models);
 
 modelsInfo = struct2table(models);
+
 disp(modelsInfo);
+
+%% Statistics
+% Tests are performed for two discretizations of the output space:
+%
+% * into 5 bins
+% * into 10 bins
+%
+% Each model is tested on each dataset in a holdout crossvalidation with 20
+% random repetitions (or folds). The following performance measures are
+% recoreded in each repetition:
+%
+% * the missclassification rate
+% * the absolute error
+% * the time taken by fitting the model
+% * the optimized value of the negative log probability (NLP)
+% * the best of all starting points
+%
+% The mean and standard deviations of all of these measures are calculated
+% over all repetitions for each model and each dataset.
+
+% a table with results will be generated for each bin size
+bins = [5 10];
+nBins = length(bins);
+
+% the number of Monte-Carlo repetitions in crossvalidation
+nReps = 20;
 
 % statistics of crossvalidation trials
 statFcns = struct( ...
@@ -95,6 +128,8 @@ statFcns = struct( ...
   } ...
 );
 nStatFcns = length(statFcns);
+
+%% Running benchmarks
 
 % a multidimensional result cell array
 % the last dimension is for statistics mean vs. std
@@ -128,8 +163,12 @@ for binIdx = 1:length(bins)
       testFun = @(Xtr, Ytr, Xte, Yte) ...
         testModel(Xtr, Ytr, Xte, Yte, model.settings, statFcns);
 
-      stats = crossval(testFun, X, Y, 'holdout', holdout, ...
-        'mcreps', nReps);
+      if ~dry
+        stats = crossval(testFun, X, Y, 'holdout', holdout, ...
+          'mcreps', nReps);
+      else
+        stats = zeros(nReps, nStatFcns);
+      end
 
       fmt = repmat({'%.2f'}, 1, length(mean(stats)));
       fmt = strjoin(fmt, ', ');
@@ -147,7 +186,7 @@ for binIdx = 1:length(bins)
       for statFcnIdx = 1:nStatFcns
         statFcn = statFcns(statFcnIdx);
 
-        col = (modelIdx - 1) * nModels + statFcnIdx + 1;
+        col = (modelIdx - 1) * nStatFcns + statFcnIdx + 1;
 
         if isempty(varNames{col})
           varNames{col} = sprintf('%s__%s', model.name, statFcn.name);
@@ -160,14 +199,20 @@ for binIdx = 1:length(bins)
   end
 end
 
-resTbls{1}.Properties.VariableNames = varNames;
+for i = 1:length(resTbls)
+  resTbls{i}.Properties.VariableNames = varNames;
+end
 
+% save the results into a timestamped file
 ts = datestr(now, 'yyyy-mm-ddTHH:MM');
 filename = fullfile(outpath, ['benchmark_results_' ts '.mat']);
 save(filename, 'results', 'resTbls');
 
+%% 5 bins results
+
 disp(resTbls{1});
 
-% resTbls{2}.Properties.VariableNames = varNames;
-% disp(resTbls{2});
+%% 10 bins results
+
+disp(resTbls{2});
 
