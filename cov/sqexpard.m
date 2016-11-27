@@ -67,8 +67,8 @@ function [Kmn, dKmn] = sqexpard(Xm, z, theta, j)
     Xm = bsxfun(@minus, Xm, mu);
     Xn = bsxfun(@minus, Xn, mu);
 
-    Xm = bsxfun(@rdivide, Xm, (1./l)');
-    Xn = bsxfun(@rdivide, Xn, (1./l)');
+    Xm = bsxfun(@rdivide, Xm, l');
+    Xn = bsxfun(@rdivide, Xn, l');
 
     % the pairwise squared distances
     Kmn = bsxfun(@plus, dot(Xm, Xm, 2), dot(Xn, Xn, 2)') - 2 * (Xm * Xn');
@@ -99,7 +99,7 @@ function [Kmn, dKmn] = sqexpard(Xm, z, theta, j)
         else
           % pairwise squared distances in (j(k)-1)th dimension
           sqdistk = bsxfun(@(xk, yk) (xk - yk).^2, ...
-            Xm(:, dim) ./ l(dim), Xn(:, dim)' ./ l(dim));
+            Xm(:, dim), Xn(:, dim)');
           dKmn(:, :, k) = sigma2 * dKmn(:, :, k) .* sqdistk;
         end
       else
