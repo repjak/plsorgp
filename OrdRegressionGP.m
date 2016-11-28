@@ -393,7 +393,8 @@ classdef OrdRegressionGP < handle
               alpha = 4 * rand() - 2;
               beta1 = 2 * rand() - 1;
               delta = arrayfun(@(i) b(i) - b(i - 1), 2:(obj.r - 1));
-              hyp0 = [alpha beta1 delta obj.hyp.cov sqrt(obj.hyp.sigma2)];
+              hyp0 = [min(obj.ub.plsor, max(obj.lb.plsor, [alpha beta1 delta])) ...
+                obj.hyp.cov sqrt(obj.hyp.sigma2)];
               y0 = obj.nlpFcn(hyp0);
               undef = isinf(y0) || isnan(y0);
             end
