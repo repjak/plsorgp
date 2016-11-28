@@ -4,4 +4,8 @@
 *.mexw64
 *.conf
 *~
+logs
+scripts/data
 scripts/html
+scripts/results
+plsorgp_benchmark.o[0-9]*
