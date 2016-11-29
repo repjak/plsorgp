@@ -86,7 +86,8 @@ function [p, dp] = predProb(y, hyp, mu, s2, dmu, ds2, j)
     d1(y == r, :) = 0;
     d2(y == 1, :) = 0;
     dp = (bsxfun(@times, d1, normpdf(f./g)) - ...
-      bsxfun(@times, d2, normpdf(h./g))) ./ g2;
+      bsxfun(@times, d2, normpdf(h./g)));
+    dp = bsxfun(@rdivide, dp, g2);
   end
 end
 

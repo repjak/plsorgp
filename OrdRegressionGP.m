@@ -210,7 +210,7 @@ classdef OrdRegressionGP < handle
         obj.hyp.sigma2 = p.Results.Sigma2;
       end
 
-      obj.lb.sigma2 = min(obj.hyp.sigma2, 1e-16);
+      obj.lb.sigma2 = min(obj.hyp.sigma2, 1e-10);
       obj.ub.sigma2 = max(obj.hyp.sigma2, 2 * var(obj.ys));
 
       % set default plsor values
@@ -382,24 +382,33 @@ classdef OrdRegressionGP < handle
     function fit(obj)
       switch obj.fitMethod
         case 'exact'
-          startPoints = zeros(2, obj.nHyp);
+          startPoints = zeros(obj.nRandomPoints, obj.nHyp);
+          undef = true(1, obj.nRandomPoints + 1);
+
           startPoints(1, :) = [obj.hyp.plsor obj.hyp.cov sqrt(obj.hyp.sigma2)];
+          y0 = obj.nlpFcn(startPoints(1, :));
+          undef(1) = isinf(y0) || isnan(y0);
 
           for i = 2:(obj.nRandomPoints + 1)
-            undef = true;
-
-            while undef
-              b = sort(2 * (obj.r - 1) * rand(1, obj.r - 1));
-              alpha = 4 * rand() - 2;
-              beta1 = 2 * rand() - 1;
-              delta = arrayfun(@(i) b(i) - b(i - 1), 2:(obj.r - 1));
-              hyp0 = [min(obj.ub.plsor, max(obj.lb.plsor, [alpha beta1 delta])) ...
-                obj.hyp.cov sqrt(obj.hyp.sigma2)];
-              y0 = obj.nlpFcn(hyp0);
-              undef = isinf(y0) || isnan(y0);
-            end
-
+            b = sort((obj.r - 1) * rand(1, obj.r - 1));
+            alpha = 2 * rand() - 1;
+            beta1 = ((obj.r - 1) / 4) * rand() - (obj.r - 1) / 8;
+            delta = arrayfun(@(i) b(i) - b(i - 1), 2:(obj.r - 1));
+            hyp0 = [min(obj.ub.plsor, max(obj.lb.plsor, [alpha beta1 delta])) ...
+              obj.hyp.cov sqrt(obj.hyp.sigma2)];
+            y0 = obj.nlpFcn(hyp0);
+            undef(i) = isinf(y0) || isnan(y0);
             startPoints(i, :) = hyp0;
+          end
+
+          if any(undef) && ~all(undef)
+            warning('Some starting points had undefined value.');
+            startPoints = startPoints(~undef, :);
+          end
+
+          if all(undef)
+            warning('The model is untrained: no starting point with defined value found.');
+            return;
           end
 
           optproblem = struct( ...
