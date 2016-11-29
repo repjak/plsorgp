@@ -1,49 +1,59 @@
-function [datasets, dataInfo] = preprocData(datapath, datasets)
+function [datasets, dataInfo] = preprocData(datapath, datasets, bins, nReps)
 %PREPROCDATA Convert data to csv and read them into tables.
 
   dataInfo = cell(length(datasets), 4);
 
+  nTest = nan(length(datasets), 1);
+  nTrain = nan(length(datasets), 1);
+  nAttrs = nan(length(datasets), 1);
+
   for i = 1:length(datasets)
-    filename = fullfile(datapath, datasets(i).filename);
-    [~, basename] = fileparts(filename);
-    csvfilename = fullfile(datapath, [basename '.csv']);
+    dataset = datasets(i);
 
-    if ~exist(csvfilename, 'file')
-      fprintf('Writing a csv file: %s\n', csvfilename);
+    for bin = bins
+      dirname = fullfile(dataset.dirname, [num2str(bin) 'bin']);
 
-      % read the whole file into memory
-      text = fileread(filename);
-
-      % remove leading white spaces
-      text = regexprep(text, '^\s*', '');
-      text = regexprep(text, '\n\s*', '\n');
-
-      % unify delimiters
-      if isempty(strfind(text, ','))
-        repl = ',';
-      else
-        repl = '';
+      if ~isdir(fullfile(datapath, dirname))
+        dirname = fullfile(dataset.dirname, [num2str(bin) 'bins']);
       end
 
-      % reduce redundant white spaces assuming no empty fields
-      text = regexprep(text, '([\t ])+', repl);
+      for t = {'Tr', 'Te'}
+        data = cell(1, nReps);
 
-      % write the csv file
-      fid = fopen(csvfilename, 'w');
-      fprintf(fid, '%s', text);
-      fclose(fid);
+        for k = 1:nReps
+          if strcmp(t, 'Tr')
+            filename = [dataset.prefix '_train_' num2str(bin) '.' num2str(k)];
+          else
+            filename = [dataset.prefix '_test_' num2str(bin) '.' num2str(k)];
+          end
+
+          filename = fullfile(datapath, dirname, filename);
+          csvfilename = [filename '.csv'];
+
+          if ~exist(csvfilename, 'file')
+            copyfile(filename, csvfilename);
+          end
+
+          data{k} = readtable(csvfilename, 'Delimiter', ' ', ...
+            'ReadVariableNames', false ...
+          );
+
+          nAttrs(i) = size(data{k}, 2) - 1;
+
+          if strcmp(t, 'Te')
+            assert(isnan(nTest(i)) || nTest(i) == size(data{k}, 1));
+            nTest(i) = size(data{k}, 1);
+          else
+            nTrain(i) = size(data{k}, 1);
+          end
+        end
+
+        dataset.(['data' t{:} num2str(bin)]) = data;
+      end
     end
 
-    datasets(i).tbl = readtable(csvfilename, 'Delimiter', ',', ...
-      'ReadVariableNames', false ...
-    );
-
-    dataset = datasets(i);
-    te = dataset.holdout;
-    tr = size(dataset.tbl, 1) - dataset.holdout;
-    m = size(dataset.tbl, 2);
-
-    dataInfo(i, :) = {datasets(i).name, m - 1, tr, te};
+    datasets(i) = dataset;
+    dataInfo(i, :) = {datasets(i).name, nAttrs(i), nTrain(i), nTest(i)};
   end
 
   dataInfo = cell2table(dataInfo, 'VariableNames', {'Name', ...

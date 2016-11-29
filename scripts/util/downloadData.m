@@ -20,7 +20,7 @@ function downloadData(datapath, datasets)
       websave(filename, url);
     end
 
-    if ~exist(fullfile(datapath, dataset.filename), 'file')
+    if ~isdir(fullfile(datapath, dataset.dirname))
       fprintf('Unzip %s\n', filename');
       unzip(filename, datapath);
     end
