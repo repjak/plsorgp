@@ -21,13 +21,19 @@ function [datasets, dataInfo] = preprocData(datapath, datasets, bins, nReps)
         data = cell(1, nReps);
 
         for k = 1:nReps
-          if strcmp(t, 'Tr')
-            filename = [dataset.prefix '_train_' num2str(bin) '.' num2str(k)];
-          else
-            filename = [dataset.prefix '_test_' num2str(bin) '.' num2str(k)];
-          end
+          for s = {'', '.ord'}
+            if strcmp(t, 'Tr')
+              filename = [dataset.prefix s{:} '_train_' num2str(bin) '.' num2str(k)];
+            else
+              filename = [dataset.prefix s{:} '_test_' num2str(bin) '.' num2str(k)];
+            end
 
-          filename = fullfile(datapath, dirname, filename);
+            filename = fullfile(datapath, dirname, filename);
+
+            if exist(filename, 'file')
+              break;
+            end
+          end
           csvfilename = [filename '.csv'];
 
           if ~exist(csvfilename, 'file')
