@@ -20,7 +20,6 @@ classdef OrdRegressionGP < handle
     optRes              % a structure of optimization results
     lossFcn             % a loss function for predictions
     fitMethod = 'exact' % the fitting method, either 'exact' or 'none'
-    nRandomPoints = 1   % the number of random initial points for fitting
     standardize = true  % standardize the training data
     optimopts           % optimizer options
     minNlp = Inf        % the optimal negative log probability
@@ -48,6 +47,7 @@ classdef OrdRegressionGP < handle
     OptimExitFlag            % optimizer's exit flag
     OptimTrial               % the best starting point if multistart is used
     MinimumNLP               % optimized value of negative log probability
+    NumStartPoints           % the number of initial points for fitting
   end
 
   methods
@@ -94,6 +94,9 @@ classdef OrdRegressionGP < handle
       p.addParameter('LossFunction', 'zeroone', ...
         @(x) (ischar(x) && ismember(x, {'zeroone', 'abserr'})) || ...
         isa(x, 'function_handle'));
+      p.addParameter('NumStartPoints', 5, ...
+        @(x) validateattributes(x, {'numeric'}, {'nonempty', 'integer', ...
+        'positive'}));
 
       if nargin >= 3 && iscell(varargin{1})
         arglist = varargin{1};
@@ -202,6 +205,9 @@ classdef OrdRegressionGP < handle
         log([sqrt(1e-3) 1e-3 * ones(1, length(obj.hyp.cov) - 1)]));
 
       obj.nHypCov = length(obj.hyp.cov);
+      
+      % set the number of starting points
+      obj.NumStartPoints = p.Results.NumStartPoints;
 
       % set the noise hyperparameter
       if p.Results.Sigma2 == 0
@@ -227,6 +233,7 @@ classdef OrdRegressionGP < handle
 
       obj.nHyp = length(obj.hyp.cov) + length(obj.hyp.plsor) + 1;
 
+      % set loss function
       if ischar(p.Results.LossFunction)
         switch p.Results.LossFunction
           case 'zeroone'
@@ -240,8 +247,10 @@ classdef OrdRegressionGP < handle
         obj.lossFcn = p.Results.LossFunction;
       end
 
+      % set fitting method
       obj.fitMethod = p.Results.FitMethod;
 
+      % set cross-validation method
       switch p.Results.CrossVal
         case 'leave1out'
           covFcn = obj.covFcn;
@@ -255,7 +264,8 @@ classdef OrdRegressionGP < handle
         otherwise
           error('Cross-validation ''%s'' not supported.', p.Results.CrossVal);
       end
-
+      
+      % set optimizer options
       if isempty(p.Results.OptimizerOptions)
         obj.optimopts = optimoptions( ...
           @fmincon, ...
@@ -267,7 +277,8 @@ classdef OrdRegressionGP < handle
       else
         obj.optimopts = p.Results.OptimizerOptions;
       end
-
+      
+      % fit model
       obj.fit();
 
       % precompute the covariance matrix for prediction calls
@@ -382,14 +393,17 @@ classdef OrdRegressionGP < handle
     function fit(obj)
       switch obj.fitMethod
         case 'exact'
-          startPoints = zeros(obj.nRandomPoints, obj.nHyp);
-          undef = true(1, obj.nRandomPoints + 1);
+          startPoints = zeros(obj.NumStartPoints, obj.nHyp);
+          undef = true(1, obj.NumStartPoints);
 
+          % user defined starting point
           startPoints(1, :) = [obj.hyp.plsor obj.hyp.cov sqrt(obj.hyp.sigma2)];
           y0 = obj.nlpFcn(startPoints(1, :));
           undef(1) = isinf(y0) || isnan(y0);
 
-          for i = 2:(obj.nRandomPoints + 1)
+          i = 2;
+          % find the rest of feasible starting points by random
+          while (sum(~undef) < obj.NumStartPoints) && (i < 10*obj.NumStartPoints)
             b = sort((obj.r - 1) * rand(1, obj.r - 1));
             alpha = 2 * rand() - 1;
             beta1 = ((obj.r - 1) / 4) * rand() - (obj.r - 1) / 8;
@@ -399,10 +413,11 @@ classdef OrdRegressionGP < handle
             y0 = obj.nlpFcn(hyp0);
             undef(i) = isinf(y0) || isnan(y0);
             startPoints(i, :) = hyp0;
+            i = i+1;
           end
 
           if any(undef) && ~all(undef)
-            warning('Some starting points had undefined value.');
+            warning('%d/%d starting points had undefined value.', sum(undef), length(undef));
             startPoints = startPoints(~undef, :);
           end
 
@@ -419,11 +434,14 @@ classdef OrdRegressionGP < handle
             'options', obj.optimopts ...
           );
 
+          % find hyperparameters with minimal negative log probability
+          % using startPoints
           for i = 1:size(startPoints, 1)
             optproblem.x0 = startPoints(i, :);
 
             warning('off', 'MATLAB:nearlySingularMatrix');
 
+            % minimize negative log probability
             try
               [minx, miny, exitflag, optinfo] = fmincon(optproblem);
             catch err
