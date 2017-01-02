@@ -403,7 +403,7 @@ classdef OrdRegressionGP < handle
 
           i = 2;
           % find the rest of feasible starting points by random
-          while (sum(~undef) < obj.NumStartPoints) && (i < 10*obj.NumStartPoints)
+          while (sum(~undef) < obj.NumStartPoints) && (i < 100*obj.NumStartPoints)
             b = sort((obj.r - 1) * rand(1, obj.r - 1));
             alpha = 2 * rand() - 1;
             beta1 = ((obj.r - 1) / 4) * rand() - (obj.r - 1) / 8;
