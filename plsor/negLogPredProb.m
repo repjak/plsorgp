@@ -1,5 +1,6 @@
 function [logp, dlogp] = negLogPredProb(hyp, nHypCov, covFcn, X, y, n, dbg)
-%NEGLOGPREDPROB The objective function that is to be optimized.
+% NEGLOGPREDPROB Negative logarithm of predictive probability. 
+% The objective function that is to be optimized. (Eq. 11)
 
   if nargin < 8
     dbg = false;
@@ -32,7 +33,9 @@ function [logp, dlogp] = negLogPredProb(hyp, nHypCov, covFcn, X, y, n, dbg)
   Kinvy = cholsolve(R, y) / sigman2; % (K + sigman2 * eye(n)) * Kinvy == y
   assert(~dbg || sum(abs(Kinvy - (cholinv(R) ./ sigman2) * y)) < n*errtol);
 
+  % leave-one-out predictive mean (Eq. 12)
   muloo = y - Kinvy ./ diagKinv;
+  % leave-one-out variance (Eq. 13)
   s2loo = 1 ./ diagKinv - sigman2;
 
   if dbg

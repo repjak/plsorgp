@@ -1,5 +1,7 @@
 classdef OrdRegressionGP < handle
-  %ORDREGRESSIONGP An Ordinal Regression Gaussian Process model.
+  % ORDREGRESSIONGP An Ordinal Regression Gaussian Process model.
+  % Based on P.K.Srijith (2012): 'A Probability Least Squares Approach to 
+  % Ordinal Regression'.
 
   properties (GetAccess = protected, SetAccess = private, Hidden = true)
     muX = 0             % predictors mean for standardization

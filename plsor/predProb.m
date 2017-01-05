@@ -1,4 +1,6 @@
 function [p, dp] = predProb(y, hyp, mu, s2, dmu, ds2, j)
+% PREDPROB predictive probability function.
+
   n = length(y);
   y = reshape(y, n, 1);
 
@@ -6,6 +8,7 @@ function [p, dp] = predProb(y, hyp, mu, s2, dmu, ds2, j)
   alpha = hyp(1);
   delta = hyp(3:end);
 
+  % number of hyperparameters
   r = length(delta) + 2;
 
   if ~all(0 <= y & y <= r)
@@ -53,6 +56,7 @@ function [p, dp] = predProb(y, hyp, mu, s2, dmu, ds2, j)
   f = alpha .* mu + b1;
   h = alpha .* mu + b2;
 
+  % predictive distribution (Eq. 9)
   p = normcdf(f./g) - normcdf(h./g);
 
   if nargout >= 2
