@@ -403,16 +403,35 @@ classdef OrdRegressionGP < handle
           y0 = obj.nlpFcn(startPoints(1, :));
           undef(1) = isinf(y0) || isnan(y0);
 
+          % LOO prediction
+          % TODO: create a function (returning also partial derivatives)
+          K = obj.covFcn(obj.X, obj.X, obj.hyp.cov);
+          R = chol(K + obj.hyp.sigma2 * eye(obj.n)) / sqrt(obj.hyp.sigma2);
+          V = R' \ (1./obj.hyp.sigma2 * eye(obj.n));
+          diagKinv = dot(V, V)'; % diagKinv = diag(inv(K + sigman2 * eye(n)))
+          Kinvy = cholsolve(R, obj.ys) / obj.hyp.sigma2;
+          muloo = obj.ys - Kinvy ./ diagKinv;
+
           i = 2;
           % find the rest of feasible starting points by random
-          while (sum(~undef) < obj.NumStartPoints) && (i < 100*obj.NumStartPoints)
-            b = sort((obj.r - 1) * rand(1, obj.r - 1));
-            alpha = 2 * rand() - 1;
-            beta1 = ((obj.r - 1) / 4) * rand() - (obj.r - 1) / 8;
+          while i <= obj.NumStartPoints
+            b = sort(range(muloo) * rand(1, obj.r - 1) + min(muloo));
+            beta1 = min(muloo); %((obj.r - 1) / 4) * rand() - (obj.r - 1) / 8;
             delta = arrayfun(@(i) b(i) - b(i - 1), 2:(obj.r - 1));
-            hyp0 = [min(obj.ub.plsor, max(obj.lb.plsor, [alpha beta1 delta])) ...
-              obj.hyp.cov sqrt(obj.hyp.sigma2)];
-            y0 = obj.nlpFcn(hyp0);
+            alpha = 0.01;
+            y0 = NaN;
+            while abs(alpha) < 2 && (isinf(y0) || isnan(y0))
+              alpha = 2 * alpha;
+              for s = [1 -1]
+                alpha = s * alpha;
+                hyp0 = [min(obj.ub.plsor, max(obj.lb.plsor, [alpha beta1 delta])) ...
+                  obj.hyp.cov sqrt(obj.hyp.sigma2)];
+                y0 = obj.nlpFcn(hyp0);
+                if ~isinf(y0) && ~isnan(y0)
+                  break;
+                end
+              end
+            end
             undef(i) = isinf(y0) || isnan(y0);
             startPoints(i, :) = hyp0;
             i = i+1;
