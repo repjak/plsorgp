@@ -96,7 +96,7 @@ classdef OrdRegressionGP < handle
       p.addParameter('LossFunction', 'zeroone', ...
         @(x) (ischar(x) && ismember(x, {'zeroone', 'abserr'})) || ...
         isa(x, 'function_handle'));
-      p.addParameter('NumStartPoints', 5, ...
+      p.addParameter('NumStartPoints', 2, ...
         @(x) validateattributes(x, {'numeric'}, {'nonempty', 'integer', ...
         'positive'}));
 
@@ -218,8 +218,8 @@ classdef OrdRegressionGP < handle
         obj.hyp.sigma2 = p.Results.Sigma2;
       end
 
-      obj.lb.sigma2 = min(obj.hyp.sigma2, 1e-10);
-      obj.ub.sigma2 = max(obj.hyp.sigma2, 2 * var(obj.ys));
+      obj.lb.sigma2 = min(obj.hyp.sigma2, 1e-5);
+      obj.ub.sigma2 = max(obj.hyp.sigma2, 1e-2);
 
       % set default plsor values
       if isempty(obj.hyp.plsor)
@@ -230,8 +230,9 @@ classdef OrdRegressionGP < handle
       end
 
       obj.lb.plsor = min(obj.hyp.plsor, ...
-        [-Inf -Inf zeros(1, length(obj.hyp.plsor)-2)]);
-      obj.ub.plsor = Inf(1, length(obj.hyp.plsor));
+        [-100 -Inf zeros(1, length(obj.hyp.plsor)-2)]);
+      % obj.ub.plsor = Inf(1, length(obj.hyp.plsor));
+      obj.ub.plsor = [100 repmat(1000, 1, length(obj.hyp.plsor)-1)];
 
       obj.nHyp = length(obj.hyp.cov) + length(obj.hyp.plsor) + 1;
 
@@ -289,7 +290,7 @@ classdef OrdRegressionGP < handle
       obj.Kinvy = cholsolve(obj.R, obj.ys);
     end
 
-    function [y, p, mu, s2] = predict(obj, Xnew)
+    function [y, p, mu, s2, e] = predict(obj, Xnew)
       %ORDREGRESSIONGP.PREDICT An ordinal probabilistic prediction.
       %   [y, p]         = ORDREGRESSIONGP.PREDICT(Xnew) return a column
       %   vector of predicted classes and a column vector of predicted
@@ -326,6 +327,7 @@ classdef OrdRegressionGP < handle
       % map the predicted ordinal class index back to the input range
       y = obj.yUnq(idx);
       p = predProbs;
+      e = P*(1:obj.r)';
     end
 
     function hyp = get.KernelParameters(obj)
@@ -402,30 +404,45 @@ classdef OrdRegressionGP < handle
           startPoints(1, :) = [obj.hyp.plsor obj.hyp.cov sqrt(obj.hyp.sigma2)];
           y0 = obj.nlpFcn(startPoints(1, :));
           undef(1) = isinf(y0) || isnan(y0);
+          
+          % random gp hyperparameters
+          hyp_rand.cov = (obj.ub.cov - obj.lb.cov).*rand(1, length(obj.lb.cov)) + obj.lb.cov;
+          hyp_rand.sigma2 = (obj.ub.sigma2 - obj.lb.sigma2).*rand() + obj.lb.sigma2;
 
           % LOO prediction
           % TODO: create a function (returning also partial derivatives)
-          K = obj.covFcn(obj.X, obj.X, obj.hyp.cov);
-          R = chol(K + obj.hyp.sigma2 * eye(obj.n)) / sqrt(obj.hyp.sigma2);
-          V = R' \ (1./obj.hyp.sigma2 * eye(obj.n));
+          %       could it be negLogPredProb?
+          K = obj.covFcn(obj.X, obj.X, hyp_rand.cov);
+          R = chol(K + hyp_rand.sigma2 * eye(obj.n)) / sqrt(hyp_rand.sigma2);
+          V = R' \ (1./hyp_rand.sigma2 * eye(obj.n));
           diagKinv = dot(V, V)'; % diagKinv = diag(inv(K + sigman2 * eye(n)))
-          Kinvy = cholsolve(R, obj.ys) / obj.hyp.sigma2;
+          Kinvy = cholsolve(R, obj.ys) / hyp_rand.sigma2;
           muloo = obj.ys - Kinvy ./ diagKinv;
+          
+          % compute mu and s2
+          [~, ~, muloo, s2loo] = obj.nlpFcn([obj.hyp.plsor, hyp_rand.cov, sqrt(hyp_rand.sigma2)]);
 
+          % initialize probability distribution
+          pd = makedist('Normal', 0, 1);
+          % compute cdf bound value
+          cdfb = abs(icdf(pd, eps)) / 2;
+          
           i = 2;
           % find the rest of feasible starting points by random
           while i <= obj.NumStartPoints
-            b = sort(range(muloo) * rand(1, obj.r - 1) + min(muloo));
-            beta1 = min(muloo); %((obj.r - 1) / 4) * rand() - (obj.r - 1) / 8;
-            delta = arrayfun(@(i) b(i) - b(i - 1), 2:(obj.r - 1));
             alpha = 0.01;
+            beta1 = -cdfb*sqrt(1 + min(s2loo)*alpha^2) - alpha*min(muloo);
+            betar =  cdfb*sqrt(1 + min(s2loo)*alpha^2) - alpha*max(muloo);
+            b = sort((betar - beta1) * rand(1, obj.r - 1) + beta1);
+            % beta1 = min(muloo); %((obj.r - 1) / 4) * rand() - (obj.r - 1) / 8;
+            delta = arrayfun(@(i) b(i) - b(i - 1), 2:(obj.r - 1));
             y0 = NaN;
             while abs(alpha) < 2 && (isinf(y0) || isnan(y0))
               alpha = 2 * alpha;
               for s = [1 -1]
                 alpha = s * alpha;
                 hyp0 = [min(obj.ub.plsor, max(obj.lb.plsor, [alpha beta1 delta])) ...
-                  obj.hyp.cov sqrt(obj.hyp.sigma2)];
+                  hyp_rand.cov sqrt(hyp_rand.sigma2)];
                 y0 = obj.nlpFcn(hyp0);
                 if ~isinf(y0) && ~isnan(y0)
                   break;

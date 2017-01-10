@@ -1,4 +1,4 @@
-function [logp, dlogp] = negLogPredProb(hyp, nHypCov, covFcn, X, y, n, dbg)
+function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y, n, dbg)
 % NEGLOGPREDPROB Negative logarithm of predictive probability. 
 % The objective function that is to be optimized. (Eq. 11)
 
