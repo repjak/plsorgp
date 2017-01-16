@@ -26,6 +26,11 @@ function binningComparison(y, nBins)
   
   % find all implemented binnings
   bintype = binning('list');
+  if nargin == 1 && strcmp(y, ('list')')
+    fprintf('%s\n', strjoin(bintype, '\n'))
+    return
+  end
+  
   % perform binning
   bins = cellfun(@(type) binning(y, nBins, type), bintype, 'UniformOutput', false);
   % list results in table

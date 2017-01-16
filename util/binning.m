@@ -21,6 +21,7 @@ function [b, edges] = binning(y, k, type)
 %            'none'       - number of bins equals to number of datapoints 
 %                           (k = N), edges satisfy: 
 %                             edge(j) = (y(j+1) + y(j))/2
+%            'logcluster' - agglomerative hierarchical clustering of log(y)
 %            'loguniform' - log-uniformly distributed bins,
 %                           for all 2 <= j <= k-1 edges satisfy: 
 %                             edge(j+1) - edge(j) == range(log(y)) / k
@@ -41,7 +42,7 @@ function [b, edges] = binning(y, k, type)
 
   % default values
   edges = [];
-  bintype = {'none', 'best', 'cluster', 'uniform', 'loguniform', 'quantile', 'unipoints'};
+  bintype = {'none', 'best', 'cluster', 'logcluster', 'uniform', 'loguniform', 'quantile', 'unipoints'};
   
   % list all implemented binning types
   if nargin == 1 && strcmp(y, 'list')
@@ -53,13 +54,22 @@ function [b, edges] = binning(y, k, type)
   assert(k > 0, 'The number of groups must be a positive integer.');
   assert(any(strcmp(type, bintype)), 'Undefined binning type ''%s''', type)
   
-  % normalize and sort input
+  % normalize input
   n = length(y);
   y = reshape(y, n, 1);
+  % compute logarigthm of the input if necessary
+  if strcmp(type(1:3), 'log') 
+    if any(y <= 0)
+      y = y - min(y, [], 1) + eps;
+    end
+    y = log(y);
+    type = type(4:end);
+  end
+  % sort input
   [~, b] = unique(y);
   y_sort = y(b)';
 
-  % find edges according to binninb type
+  % find edges according to binning type
   switch type
     % k-1 best values has its own bin
     case 'best'
@@ -71,16 +81,7 @@ function [b, edges] = binning(y, k, type)
       b = cluster(y_lin, 'maxclust', k);
       edgeId = find(diff(b) ~= 0);
       
-      edges = [-Inf, (y_sort(edgeId) + y_sort(edgeId + 1))/2,  Inf]; 
-      
-    % logarithm of uniformly distributed range
-    case {'logunif', 'loguniform'}
-      if any(y <= 0)
-        y = y - min(y, [], 1) + eps;
-      end
-      y = log(y);
-      difference = range(y) / (k-1);
-      edges = [-Inf, min(y) + difference/2 : difference : max(y) - difference/2, Inf];  
+      edges = [-Inf, (y_sort(edgeId) + y_sort(edgeId + 1))/2,  Inf];
       
     % evenly spaced cumulative probabilities of points
     case {'quant', 'quantile'}

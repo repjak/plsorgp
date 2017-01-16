@@ -174,7 +174,7 @@ classdef OrdRegressionGP < handle
               obj.hyp.cov = reshape(obj.hyp.cov, 1, numel(obj.hyp.cov));
             end
 
-            obj.ub.cov = max(obj.hyp.cov, log([sqrt(1e1) 1e1]));
+            obj.ub.cov = max(obj.hyp.cov + eps, log([sqrt(1e1) 1e1]));
           case 'ardsquaredexponential'
             obj.covFcn = @sqexpard;
             if ~isempty(obj.hyp.cov) && length(obj.hyp.cov) ~= d + 1
@@ -186,7 +186,7 @@ classdef OrdRegressionGP < handle
               obj.hyp.cov = reshape(obj.hyp.cov, 1, numel(obj.hyp.cov));
             end
 
-            obj.ub.cov = max(obj.hyp.cov, ...
+            obj.ub.cov = max(obj.hyp.cov + eps, ...
               log([sqrt(1e1) 1e1 * ones(1, obj.d) / sqrt(obj.d)]));
           otherwise
             error('Unknown kernel function ''%s''.', p.Results.KernelFunction);
@@ -199,11 +199,11 @@ classdef OrdRegressionGP < handle
             covFcnInfo.function);
         end
 
-        obj.ub.cov = max(obj.hyp.cov, ...
+        obj.ub.cov = max(obj.hyp.cov + eps, ...
           1e1 + zeros(1, length(obj.hyp.cov)));
       end
 
-      obj.lb.cov = min(obj.hyp.cov, ...
+      obj.lb.cov = min(obj.hyp.cov - eps, ...
         log([sqrt(1e-3) 1e-3 * ones(1, length(obj.hyp.cov) - 1)]));
 
       obj.nHypCov = length(obj.hyp.cov);
@@ -218,8 +218,8 @@ classdef OrdRegressionGP < handle
         obj.hyp.sigma2 = p.Results.Sigma2;
       end
 
-      obj.lb.sigma2 = min(obj.hyp.sigma2, 1e-5);
-      obj.ub.sigma2 = max(obj.hyp.sigma2, 1e-2);
+      obj.lb.sigma2 = min(obj.hyp.sigma2 - eps, 1e-5);
+      obj.ub.sigma2 = max(obj.hyp.sigma2 + eps, 1e-2);
 
       % set default plsor values
       if isempty(obj.hyp.plsor)
@@ -412,12 +412,12 @@ classdef OrdRegressionGP < handle
           % LOO prediction
           % TODO: create a function (returning also partial derivatives)
           %       could it be negLogPredProb?
-          K = obj.covFcn(obj.X, obj.X, hyp_rand.cov);
-          R = chol(K + hyp_rand.sigma2 * eye(obj.n)) / sqrt(hyp_rand.sigma2);
-          V = R' \ (1./hyp_rand.sigma2 * eye(obj.n));
-          diagKinv = dot(V, V)'; % diagKinv = diag(inv(K + sigman2 * eye(n)))
-          Kinvy = cholsolve(R, obj.ys) / hyp_rand.sigma2;
-          muloo = obj.ys - Kinvy ./ diagKinv;
+          % K = obj.covFcn(obj.X, obj.X, hyp_rand.cov);
+          % R = chol(K + hyp_rand.sigma2 * eye(obj.n)) / sqrt(hyp_rand.sigma2);
+          % V = R' \ (1./hyp_rand.sigma2 * eye(obj.n));
+          % diagKinv = dot(V, V)'; % diagKinv = diag(inv(K + sigman2 * eye(n)))
+          % Kinvy = cholsolve(R, obj.ys) / hyp_rand.sigma2;
+          % muloo = obj.ys - Kinvy ./ diagKinv;
           
           % compute mu and s2
           [~, ~, muloo, s2loo] = obj.nlpFcn([obj.hyp.plsor, hyp_rand.cov, sqrt(hyp_rand.sigma2)]);
@@ -429,7 +429,7 @@ classdef OrdRegressionGP < handle
           
           i = 2;
           % find the rest of feasible starting points by random
-          while i <= obj.NumStartPoints
+          while sum(~undef) < obj.NumStartPoints
             alpha = 0.01;
             beta1 = -cdfb*sqrt(1 + min(s2loo)*alpha^2) - alpha*min(muloo);
             betar =  cdfb*sqrt(1 + min(s2loo)*alpha^2) - alpha*max(muloo);
