@@ -1,50 +1,98 @@
 function [b, edges] = binning(y, k, type)
-% BINNING Discretize data into uniformely sized intervals.
+% BINNING Discretize data into intervals according to chosen strategy.
+%
 %   [b, edges] = BINNING(y, k, type) divide range of y into k intervals
 %   determined by k + 1 edges according to binning type. The vector b 
 %   satisfies the condition that b(i) equals j iff edges(j) <= y(i) < 
 %   edges(j+1). Edges always satisfy the condition: edge(1) = -Inf and 
 %   edge(k+1) == Inf.
 %
+%   bintype = BINNING('list') returns cell-array of implemented binning
+%   types.
+%
 % Input:
 %   y - values to bin
 %   k - number of bins
 %   type - type of binning:
-%            'best'      - for all 2 <= j <= k-1 edges satisfy: 
-%                            edge(j) = (y_sort(j) + y_sort(j-1))/2, 
-%                          where y_sort is sorted y in ascend order, 
-%            'none'      - number of bins equals to number of datapoints 
-%                          (k = N), edges satisfy: 
-%                            edge(j) = (y(j+1) + y(j))/2
-%            'uniform'   - uniformly distributed bins,
-%                          for all 2 <= j <= k-1 edges satisfy: 
-%                            edge(j+1) - edge(j) == range(y) / k
-%            'unipoints' - uniformly distributed points
+%            'best'       - for all 2 <= j <= k-1 edges satisfy: 
+%                             edge(j) = (y_sort(j) + y_sort(j-1))/2, 
+%                           where y_sort is sorted y in ascend order, 
+%            'cluster'    - agglomerative hierarchical clustering
+%            'none'       - number of bins equals to number of datapoints 
+%                           (k = N), edges satisfy: 
+%                             edge(j) = (y(j+1) + y(j))/2
+%            'loguniform' - log-uniformly distributed bins,
+%                           for all 2 <= j <= k-1 edges satisfy: 
+%                             edge(j+1) - edge(j) == range(log(y)) / k
+%                         - y is shifted to be positive
+%            'quantile'   - evenly spaced cumulative probabilities of 
+%                           points 
+%            'uniform'    - uniformly distributed bins,
+%                           for all 2 <= j <= k-1 edges satisfy: 
+%                             edge(j+1) - edge(j) == range(y) / k
+%            'unipoints'  - uniformly distributed points
 %
 % Output:
 %   b     - binning of 'y' values, vector of the same length as 'y'
 %   edges - edges computed according to binning 'type', 1x(k+1) vector
+%
+% See Also:
+%   binningComparison
 
-  if k <= 0
-    error('The number of groups must be a positive integer.');
-  end
+  % default values
+  edges = [];
+  bintype = {'none', 'best', 'cluster', 'uniform', 'loguniform', 'quantile', 'unipoints'};
   
+  % list all implemented binning types
+  if nargin == 1 && strcmp(y, 'list')
+    b = bintype;
+    return
+  end
+
+  % checkout input values
+  assert(k > 0, 'The number of groups must be a positive integer.');
+  assert(any(strcmp(type, bintype)), 'Undefined binning type ''%s''', type)
+  
+  % normalize and sort input
+  n = length(y);
+  y = reshape(y, n, 1);
   [~, b] = unique(y);
   y_sort = y(b)';
 
+  % find edges according to binninb type
   switch type
     % k-1 best values has its own bin
     case 'best'
       edges = [-Inf, (y_sort(1:k-1) + y_sort(2:k))/2,  Inf]; 
       
-    % uniformly distributed bins
+    % agglomerative hierarchical clustering
+    case 'cluster'
+      y_lin = linkage(pdist(y_sort'));
+      b = cluster(y_lin, 'maxclust', k);
+      edgeId = find(diff(b) ~= 0);
+      
+      edges = [-Inf, (y_sort(edgeId) + y_sort(edgeId + 1))/2,  Inf]; 
+      
+    % logarithm of uniformly distributed range
+    case {'logunif', 'loguniform'}
+      if any(y <= 0)
+        y = y - min(y, [], 1) + eps;
+      end
+      y = log(y);
+      difference = range(y) / (k-1);
+      edges = [-Inf, min(y) + difference/2 : difference : max(y) - difference/2, Inf];  
+      
+    % evenly spaced cumulative probabilities of points
+    case {'quant', 'quantile'}
+      edges = [-Inf, quantile(y_sort, k-1),  Inf]; 
+      
+    % uniformly distributed range
     case {'unif', 'uniform'}
-      diff = range(y) / (k-1);
-      edges = [-Inf, min(y) + diff/2 : diff : max(y) - diff/2, Inf];
+      difference = range(y) / (k-1);
+      edges = [-Inf, min(y) + difference/2 : difference : max(y) - difference/2, Inf];
       
     % uniformly distributed points
     case {'unip', 'unipoints'}
-      n = length(y);
       rem = mod(n, k);
       binSize = [floor(n/k)*ones(1, k - rem), ceil(n/k)*ones(1, rem)];
       pid = cumsum(binSize(1:end-1));
@@ -58,7 +106,7 @@ function [b, edges] = binning(y, k, type)
       error('Undefined binning type: ''%s''', type)
   end
   
-  
+  % return bins according to data
   b = arrayfun(@(x) find(x < edges, 1) - 1, y);
 end
 
