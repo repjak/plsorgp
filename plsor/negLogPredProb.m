@@ -1,8 +1,22 @@
-function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y, n, dbg)
+function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y, dbg)
 % NEGLOGPREDPROB Negative logarithm of predictive probability. 
 % The objective function that is to be optimized. (Eq. 11)
+%
+% Input:
+%   hyp     - hyperparameter vector [alpha beta1 delta cov sigman]
+%   nHypCov - number of covariance function hyperparameters
+%   covFcn  - covariance function handle 
+%   X       - input data | N x dim double
+%   y       - function values for input X | N x 1 double
+%   dbg     - debugging mode | boolean
+%
+% Output:
+%   logp  - negative logarithm of probability | double
+%   dlogp - derivative of logp | double
+%   muloo - leave-one-out mean prediction for X | N x 1 double
+%   s2loo - leave-one-out variance prediction for X | N x 1 double
 
-  if nargin < 8
+  if nargin < 6
     dbg = false;
   end
 
@@ -12,6 +26,7 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y
   hypCov = hyp(end-nHypCov:end-1);
   sigman = hyp(end);
   sigman2 = sigman^2;
+  n = size(X, 1);
 
   % the covariance matrix and its gradient if required
   if nargout >= 2

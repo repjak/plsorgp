@@ -53,21 +53,25 @@ function [b, edges] = binning(y, k, type)
   % checkout input values
   assert(k > 0, 'The number of groups must be a positive integer.');
   assert(any(strcmp(type, bintype)), 'Undefined binning type ''%s''', type)
+  logType = strcmp(type(1:3), 'log');
   
   % normalize input
   n = length(y);
+  k = min(k, n);
   y = reshape(y, n, 1);
   % compute logarigthm of the input if necessary
-  if strcmp(type(1:3), 'log') 
+  if logType
     if any(y <= 0)
-      y = y - min(y, [], 1) + eps;
+      y_shift = y - min(y, [], 1) + eps;
     end
-    y = log(y);
+    y_shift = log(y_shift);
     type = type(4:end);
+  else
+    y_shift = y;
   end
   % sort input
-  [~, b] = unique(y);
-  y_sort = y(b)';
+  [~, b] = unique(y_shift);
+  y_sort = y_shift(b)';
 
   % find edges according to binning type
   switch type
@@ -105,6 +109,11 @@ function [b, edges] = binning(y, k, type)
       
     otherwise
       error('Undefined binning type: ''%s''', type)
+  end
+  
+  % shift back to exponencial if necessary
+  if logType
+    edges(2:end-1) = exp(edges(2:end-1)) + min(y, [], 1) - eps;
   end
   
   % return bins according to data
