@@ -193,18 +193,25 @@ classdef OrdRegressionGP < handle
         end
       else
         obj.covFcn = p.Results.KernelFunction;
-        covFcnInfo = functions(obj.covFcn);
-        if isempty(obj.hyp.cov)
-          error('No hyperparameters for a user supplied kernel function ''%s''.', ...
-            covFcnInfo.function);
+        if isa(obj.covFcn, 'function_handle')
+          % function handle name
+          covFcnName = [' ''', func2str(obj.covFcn), ''''];
+        else
+          covFcnName = '';
         end
-
+        if isempty(obj.hyp.cov)
+          error('No hyperparameters for a user supplied kernel function%s.', ...
+            covFcnName);
+        end
+        
+        % standardize hyperparameters input
+        obj.hyp.cov = reshape(obj.hyp.cov, 1, numel(obj.hyp.cov));
         obj.ub.cov = max(obj.hyp.cov + eps, ...
-          1e1 + zeros(1, length(obj.hyp.cov)));
+          2*ones(size(obj.hyp.cov)));
       end
 
       obj.lb.cov = min(obj.hyp.cov - eps, ...
-        log([sqrt(1e-3) 1e-3 * ones(1, length(obj.hyp.cov) - 1)]));
+        -2*ones(size(obj.hyp.cov)));
 
       obj.nHypCov = length(obj.hyp.cov);
       
@@ -213,13 +220,13 @@ classdef OrdRegressionGP < handle
 
       % set the noise hyperparameter
       if p.Results.Sigma2 == 0
-        obj.hyp.sigma2 = var(obj.ys) / 2;
+        obj.hyp.sigma2 = log(var(obj.ys) / 2);
       else
         obj.hyp.sigma2 = p.Results.Sigma2;
       end
 
-      obj.lb.sigma2 = min(obj.hyp.sigma2 - eps, 1e-5);
-      obj.ub.sigma2 = max(obj.hyp.sigma2 + eps, 1e-2);
+      obj.lb.sigma2 = min(obj.hyp.sigma2 - eps, log(1e-6));
+      obj.ub.sigma2 = max(obj.hyp.sigma2 + eps, log(1e1));
 
       % set default plsor values
       if isempty(obj.hyp.plsor)
@@ -262,25 +269,14 @@ classdef OrdRegressionGP < handle
           y = obj.ys;
           n = obj.n;
 
-%           obj.nlpFcn = @(hyp) ...
-%             negLogPredProb(hyp, nHypCov, covFcn, X, y);
-        obj.nlpFcn = @(hyp) ...
-            negLogPredProbGpml(hyp, nHypCov, covFcn, X, y);
+          obj.nlpFcn = @(hyp) ...
+            negLogPredProb(hyp, nHypCov, covFcn, X, y);
         otherwise
           error('Cross-validation ''%s'' not supported.', p.Results.CrossVal);
       end
       
       % set optimizer options
       if isempty(p.Results.OptimizerOptions)
-        % non-gpml
-%         obj.optimopts = optimoptions( ...
-%           @fmincon, ...
-%           'GradObj', 'on', ...
-%           'Display', 'off', ...
-%           'MaxIter', 3e3, ...
-%           'Algorithm', 'interior-point' ...
-%         );
-        % gpml
         obj.optimopts = optimoptions( ...
           @fmincon, ...
           'GradObj', 'off', ...
@@ -295,10 +291,11 @@ classdef OrdRegressionGP < handle
       % fit model
       obj.fit();
 
+      % non-gpml
       % precompute the covariance matrix for prediction calls
-      obj.K = obj.covFcn(obj.X, obj.X, obj.hyp.cov);
-      obj.R = chol(obj.K + obj.hyp.sigma2 * eye(n));
-      obj.Kinvy = cholsolve(obj.R, obj.ys);
+%       obj.K = obj.covFcn(obj.X, obj.X, obj.hyp.cov);
+%       obj.R = chol(obj.K + obj.hyp.sigma2 * eye(n));
+%       obj.Kinvy = cholsolve(obj.R, obj.ys);
     end
 
     function [y, p, mu, s2, e] = predict(obj, Xnew)
@@ -327,9 +324,17 @@ classdef OrdRegressionGP < handle
 
       m = size(Xnew, 1);
 
+      % non-gpml
       % GP prediction assuming Gaussian likelihood
-      [mu, s2] = gpPred(obj.X, [], Xnew, obj.covFcn, obj.hyp.cov, ...
-        [], obj.R, obj.Kinvy);
+%       [mu, s2] = gpPred(obj.X, [], Xnew, obj.covFcn, obj.hyp.cov, ...
+%         [], obj.R, obj.Kinvy);
+      
+      % gpml prediction
+      meanFcn = @meanZero;
+      likFcn  = @likGauss;
+      infFcn  = @infExact;
+      obj.hyp.lik = obj.hyp.sigma2;
+      [mu, s2] = gp(obj.hyp, infFcn, meanFcn, obj.covFcn, likFcn, obj.X, obj.y, Xnew);
 
       % probabilistic predictions for all classes and all test data
       P = zeros(m, obj.r);
@@ -417,26 +422,16 @@ classdef OrdRegressionGP < handle
           undef = true(1, obj.NumStartPoints);
 
           % user defined starting point
-          startPoints(1, :) = [obj.hyp.plsor obj.hyp.cov sqrt(obj.hyp.sigma2)];
+          startPoints(1, :) = [obj.hyp.plsor obj.hyp.cov obj.hyp.sigma2/2];
           y0 = obj.nlpFcn(startPoints(1, :));
           undef(1) = isinf(y0) || isnan(y0);
           
           % random gp hyperparameters
           hyp_rand.cov = (obj.ub.cov - obj.lb.cov).*rand(1, length(obj.lb.cov)) + obj.lb.cov;
           hyp_rand.sigma2 = (obj.ub.sigma2 - obj.lb.sigma2).*rand() + obj.lb.sigma2;
-
-          % LOO prediction
-          % TODO: create a function (returning also partial derivatives)
-          %       could it be negLogPredProb?
-          % K = obj.covFcn(obj.X, obj.X, hyp_rand.cov);
-          % R = chol(K + hyp_rand.sigma2 * eye(obj.n)) / sqrt(hyp_rand.sigma2);
-          % V = R' \ (1./hyp_rand.sigma2 * eye(obj.n));
-          % diagKinv = dot(V, V)'; % diagKinv = diag(inv(K + sigman2 * eye(n)))
-          % Kinvy = cholsolve(R, obj.ys) / hyp_rand.sigma2;
-          % muloo = obj.ys - Kinvy ./ diagKinv;
           
           % compute mu and s2
-          [~, ~, muloo, s2loo] = obj.nlpFcn([obj.hyp.plsor, hyp_rand.cov, sqrt(hyp_rand.sigma2)]);
+          [~, ~, muloo, s2loo] = obj.nlpFcn([obj.hyp.plsor, hyp_rand.cov, hyp_rand.sigma2/2]);
 
           % initialize probability distribution
           pd = makedist('Normal', 0, 1);
@@ -450,7 +445,6 @@ classdef OrdRegressionGP < handle
             beta1 = -cdfb*sqrt(1 + min(s2loo)*alpha^2) - alpha*min(muloo);
             betar =  cdfb*sqrt(1 + min(s2loo)*alpha^2) - alpha*max(muloo);
             b = sort((betar - beta1) * rand(1, obj.r - 1) + beta1);
-            % beta1 = min(muloo); %((obj.r - 1) / 4) * rand() - (obj.r - 1) / 8;
             delta = arrayfun(@(i) b(i) - b(i - 1), 2:(obj.r - 1));
             y0 = NaN;
             while abs(alpha) < 2 && (isinf(y0) || isnan(y0))
@@ -458,7 +452,7 @@ classdef OrdRegressionGP < handle
               for s = [1 -1]
                 alpha = s * alpha;
                 hyp0 = [min(obj.ub.plsor, max(obj.lb.plsor, [alpha beta1 delta])) ...
-                  hyp_rand.cov sqrt(hyp_rand.sigma2)];
+                  hyp_rand.cov hyp_rand.sigma2/2];
                 y0 = obj.nlpFcn(hyp0);
                 if ~isinf(y0) && ~isnan(y0)
                   break;
@@ -483,8 +477,8 @@ classdef OrdRegressionGP < handle
           optproblem = struct( ...
             'solver', 'fmincon', ...
             'objective', obj.nlpFcn, ...
-            'lb', [obj.lb.plsor obj.lb.cov sqrt(obj.lb.sigma2)], ...
-            'ub', [obj.ub.plsor obj.ub.cov sqrt(obj.ub.sigma2)], ...
+            'lb', [obj.lb.plsor obj.lb.cov obj.lb.sigma2/2], ...
+            'ub', [obj.ub.plsor obj.ub.cov obj.ub.sigma2/2], ...
             'options', obj.optimopts ...
           );
 

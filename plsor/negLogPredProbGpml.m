@@ -22,7 +22,7 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProbGpml(hyp, nHypCov, covFcn, 
   
   % default settings
   
-  meanFcn = @meanConst;
+  meanFcn = @meanZero;
   likFcn  = @likGauss;
   infFcn  = @infExact;
       
@@ -32,8 +32,13 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProbGpml(hyp, nHypCov, covFcn, 
 
   % parse input
   hypPlsor = hyp(1:end-1-nHypCov);
+  % hyperparameters are supposed to be positive
   hyp_gpml.cov = hyp(end-nHypCov:end-1);
-  hyp_gpml.lik = hyp(end)^2;
+  hyp_gpml.lik = hyp(end);
+  % set the mean hyperparameter if is needed
+  if (~isequal(meanFcn, @meanZero))
+    hyp_gpml.mean = median(y);
+  end
   n = size(X, 1);
   
   % default values

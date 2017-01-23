@@ -21,6 +21,7 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y
   end
 
   errtol = 1e-4;
+  dlogp = [];
 
   hypPlsor = hyp(1:end-1-nHypCov);
   hypCov = hyp(end-nHypCov:end-1);
@@ -29,14 +30,21 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y
   n = size(X, 1);
 
   % the covariance matrix and its gradient if required
-  if nargout >= 2
-    [K, dK] = covFcn(X, X, hypCov);
-    grad = true;
-  else
-    K = covFcn(X, X, hypCov);
+%   if nargout >= 2
+%     [K, dK] = covFcn(X, X, hypCov);
+%     grad = true;
+%   else
+%     K = covFcn(X, X, hypCov);
+%     K = covSEiso(hypCov, X);
     grad = false;
-  end
+%   end
 
+  %%%%%%%%%%%%%%%%
+  % Jakubova verze
+  %%%%%%%%%%%%%%%%
+ 
+  %{
+  
   % (K + sigman2 * eye(n)) / sigman2 == R' * R
   R = chol(K + sigman2 * eye(n)) / sigman;
 
@@ -52,6 +60,36 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y
   muloo = y - Kinvy ./ diagKinv;
   % leave-one-out variance (Eq. 13)
   s2loo = 1 ./ diagKinv - sigman2;
+
+  %}
+
+  %%%%%%%%%%%%%%%%%%%%
+  % Lukasova verze
+  %%%%%%%%%%%%%%%%%%%%
+  
+  % Calculate covariances
+  %
+  K__X_N__X_N = feval(covFcn{:}, hypCov, X);    % train covariance (posterior?)
+
+  % Posterior
+  %
+  % evaluate mean vector for X_N
+  % m_N = feval(model.meanFcn, model.hyp.mean, X_N');
+  % noise variance of likGauss
+  sn2 = exp(2*sigman);
+  % Cholesky factor of covariance with noise
+  L = chol(K__X_N__X_N/sn2 + eye(n) + 0.0001*eye(n));
+  % inv(K+noise) * (y_N - mean)
+  Kinv = solve_chol(L, eye(n)) / sn2;
+
+  KinvyL    = Kinv*y;
+  diagKinvL = diag(Kinv);
+  sigman2  = sn2;
+    
+  % leave-one-out predictive mean (Eq. 12)
+  muloo = y - KinvyL ./ diagKinvL;
+  % leave-one-out variance (Eq. 13)
+  s2loo = 1 ./ diagKinvL;
 
   if dbg
     i0 = randi(n);
