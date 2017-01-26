@@ -41,10 +41,12 @@ classdef OrdRegressionGP < handle
     CrossVal                 % the crossvalidation partitiong, 'leave1out'
     LossFunction             % the loss function for deciding prediction
     KernelFunction           % the GP kernel function
+    KernelBounds             % the bounds of kernel hyperparameters
     KernelParameters         % the hyperparameters of the GP kernel
     PlsorParameters          % the hyperparameters of the PLSOR method
     OptimizerOptions         % optimizer options
     Sigma2                   % the GP's Gaussian noise variance
+    Sigma2Bounds             % the bounds of GP's Gaussian noise variance
     OptimInfo                % optimizer's result info
     OptimExitFlag            % optimizer's exit flag
     OptimTrial               % the best starting point if multistart is used
@@ -85,18 +87,22 @@ classdef OrdRegressionGP < handle
         isa(x, 'function_handle') || iscell(x));
       p.addParameter('KernelParameters', [], ...
         @(x) validateattributes(x, {'numeric'}, {'nonempty'}));
+      p.addParameter('KernelBounds', [], ...
+        @(x)isnumeric(x))
       p.addParameter('PlsorParameters', [], ...
         @(x) validateattributes(x, {'numeric'}, {'nonempty'}));
       p.addParameter('FitMethod', 'exact', ...
         @(x) ischar(x) && ismember(x, {'none', 'exact'}));
-      p.addParameter('Sigma2', 0, ...
+      p.addParameter('Sigma2', [], ...
+        @(x) isnumeric(x));
+      p.addParameter('Sigma2Bounds', [], ...
         @(x) isnumeric(x));
       p.addParameter('OptimizerOptions', [], ...
         @(x) isa(x, 'optim.options.Fmincon'));
       p.addParameter('LossFunction', 'zeroone', ...
         @(x) (ischar(x) && ismember(x, {'zeroone', 'abserr'})) || ...
         isa(x, 'function_handle'));
-      p.addParameter('NumStartPoints', 2, ...
+      p.addParameter('NumStartPoints', 5, ...
         @(x) validateattributes(x, {'numeric'}, {'nonempty', 'integer', ...
         'positive'}));
 
@@ -158,6 +164,18 @@ classdef OrdRegressionGP < handle
       % initialize hyperparameters
       obj.hyp = struct();
       obj.hyp.cov = p.Results.KernelParameters;
+      % kernel bounds should be [cov1lb, cov1ub; cov2lb, cov2ub; ...]
+      if isempty(p.Results.KernelBounds)
+        obj.KernelBounds = [-2*ones(length(obj.hyp.cov), 1), ...
+                             2*ones(length(obj.hyp.cov), 1)];
+      else
+        obj.KernelBounds = p.Results.KernelBounds;
+      end
+      if isempty(p.Results.Sigma2Bounds)
+        obj.Sigma2Bounds = [log(1e-6), log(1e1)];
+      else
+        obj.Sigma2Bounds = p.Results.Sigma2Bounds;
+      end
       obj.hyp.plsor = p.Results.PlsorParameters;
 
       % set default kernel hyperparameter values
@@ -174,7 +192,9 @@ classdef OrdRegressionGP < handle
               obj.hyp.cov = reshape(obj.hyp.cov, 1, numel(obj.hyp.cov));
             end
 
-            obj.ub.cov = max(obj.hyp.cov + eps, log([sqrt(1e1) 1e1]));
+            obj.ub.cov = max([obj.hyp.cov + eps, ...
+                              log([sqrt(1e1), 1e1]), ...
+                              obj.KernelBounds(:, 2)']);
           case 'ardsquaredexponential'
             obj.covFcn = @sqexpard;
             if ~isempty(obj.hyp.cov) && length(obj.hyp.cov) ~= d + 1
@@ -186,8 +206,9 @@ classdef OrdRegressionGP < handle
               obj.hyp.cov = reshape(obj.hyp.cov, 1, numel(obj.hyp.cov));
             end
 
-            obj.ub.cov = max(obj.hyp.cov + eps, ...
-              log([sqrt(1e1) 1e1 * ones(1, obj.d) / sqrt(obj.d)]));
+            obj.ub.cov = max([obj.hyp.cov + eps, ...
+              log([sqrt(1e1) 1e1 * ones(1, obj.d) / sqrt(obj.d)]), ...
+              obj.KernelBounds(:, 2)']);
           otherwise
             error('Unknown kernel function ''%s''.', p.Results.KernelFunction);
         end
@@ -207,11 +228,11 @@ classdef OrdRegressionGP < handle
         % standardize hyperparameters input
         obj.hyp.cov = reshape(obj.hyp.cov, 1, numel(obj.hyp.cov));
         obj.ub.cov = max(obj.hyp.cov + eps, ...
-          2*ones(size(obj.hyp.cov)));
+                         obj.KernelBounds(:, 2)');
       end
 
       obj.lb.cov = min(obj.hyp.cov - eps, ...
-        -2*ones(size(obj.hyp.cov)));
+                       obj.KernelBounds(:, 1)');
 
       obj.nHypCov = length(obj.hyp.cov);
       
@@ -225,8 +246,13 @@ classdef OrdRegressionGP < handle
         obj.hyp.sigma2 = p.Results.Sigma2;
       end
 
-      obj.lb.sigma2 = min(obj.hyp.sigma2 - eps, log(1e-6));
-      obj.ub.sigma2 = max(obj.hyp.sigma2 + eps, log(1e1));
+      obj.lb.sigma2 = min(obj.hyp.sigma2 - eps, obj.KernelBounds(1));
+      obj.ub.sigma2 = max(obj.hyp.sigma2 + eps, obj.KernelBounds(2));
+      
+      % initialize probability distribution
+      pd = makedist('Normal', 0, 1);
+      % compute cdf bound value
+      cdfb = abs(icdf(pd, eps)) / 2;
 
       % set default plsor values
       if isempty(obj.hyp.plsor)
@@ -426,17 +452,32 @@ classdef OrdRegressionGP < handle
           y0 = obj.nlpFcn(startPoints(1, :));
           undef(1) = isinf(y0) || isnan(y0);
           
+          % initialize probability distribution
+          pd = makedist('Normal', 0, 1);
+          % compute cdf bound value
+          cdfb = abs(icdf(pd, eps)) / 2;
+          
+          if undef(1)
+            % compute mu and s2
+            [~, ~, muloo, s2loo] = obj.nlpFcn(startPoints(1, :));
+            alpha = 1;
+            beta1 = -cdfb*sqrt(1 + min(s2loo)*alpha^2) - alpha*min(muloo);
+            betar =  cdfb*sqrt(1 + min(s2loo)*alpha^2) - alpha*max(muloo);
+%             delta = linspace(beta1, betar, obj.r);
+            b = sort((betar - beta1) * rand(1, obj.r - 1) + beta1);
+            delta = arrayfun(@(i) b(i) - b(i - 1), 2:(obj.r - 1));
+            startPoints(1, :) = [min(obj.ub.plsor, max(obj.lb.plsor, ...
+              [alpha beta1 delta])), obj.hyp.cov, obj.hyp.sigma2/2];
+            y0 = obj.nlpFcn(startPoints(1, :));
+            undef(1) = isinf(y0) || isnan(y0);
+          end
+          
           % random gp hyperparameters
           hyp_rand.cov = (obj.ub.cov - obj.lb.cov).*rand(1, length(obj.lb.cov)) + obj.lb.cov;
           hyp_rand.sigma2 = (obj.ub.sigma2 - obj.lb.sigma2).*rand() + obj.lb.sigma2;
           
           % compute mu and s2
           [~, ~, muloo, s2loo] = obj.nlpFcn([obj.hyp.plsor, hyp_rand.cov, hyp_rand.sigma2/2]);
-
-          % initialize probability distribution
-          pd = makedist('Normal', 0, 1);
-          % compute cdf bound value
-          cdfb = abs(icdf(pd, eps)) / 2;
           
           i = 2;
           % find the rest of feasible starting points by random
