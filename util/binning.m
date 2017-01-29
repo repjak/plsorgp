@@ -63,6 +63,8 @@ function [b, edges] = binning(y, k, type)
   if logType
     if any(y <= 0)
       y_shift = y - min(y, [], 1) + eps;
+    else
+      y_shift = y;
     end
     y_shift = log(y_shift);
     type = type(4:end);
