@@ -262,10 +262,10 @@ classdef OrdRegressionGP < handle
         obj.hyp.plsor = [alpha beta1 delta];
       end
 
+      alphaBnd = 1e3;
       obj.lb.plsor = min(obj.hyp.plsor, ...
-        [-100 -Inf zeros(1, length(obj.hyp.plsor)-2)]);
-      % obj.ub.plsor = Inf(1, length(obj.hyp.plsor));
-      obj.ub.plsor = [100 repmat(1000, 1, length(obj.hyp.plsor)-1)];
+        [-alphaBnd, -Inf, zeros(1, length(obj.hyp.plsor)-2)]);
+      obj.ub.plsor = [alphaBnd, repmat(1000, 1, length(obj.hyp.plsor)-1)];
 
       obj.nHyp = length(obj.hyp.cov) + length(obj.hyp.plsor) + 1;
 
@@ -436,7 +436,7 @@ classdef OrdRegressionGP < handle
     end
 
     function minNlp = get.MinimumNLP(obj)
-      minNlp = obj.minNlp;
+      minNlp = obj.minNlp; 
     end
   end
 
@@ -446,31 +446,26 @@ classdef OrdRegressionGP < handle
         case 'exact'
           startPoints = zeros(obj.NumStartPoints, obj.nHyp);
           undef = true(1, obj.NumStartPoints);
-
+          
           % user defined starting point
-          startPoints(1, :) = [obj.hyp.plsor obj.hyp.cov obj.hyp.sigma2/2];
-          y0 = obj.nlpFcn(startPoints(1, :));
-          undef(1) = isinf(y0) || isnan(y0);
+          startPoints(1, :) = [obj.hyp.plsor, obj.hyp.cov, obj.hyp.sigma2/2];
+          
+          % compute mu and s2
+          [~, ~, muloo, s2loo] = obj.nlpFcn(startPoints(1, :));
           
           % initialize probability distribution
           pd = makedist('Normal', 0, 1);
-          % compute cdf bound value
+          % compute cdf precision bound value
           cdfb = abs(icdf(pd, eps)) / 2;
           
-          if undef(1)
-            % compute mu and s2
-            [~, ~, muloo, s2loo] = obj.nlpFcn(startPoints(1, :));
-            alpha = 1;
-            beta1 = -cdfb*sqrt(1 + min(s2loo)*alpha^2) - alpha*min(muloo);
-            betar =  cdfb*sqrt(1 + min(s2loo)*alpha^2) - alpha*max(muloo);
-%             delta = linspace(beta1, betar, obj.r);
-            b = sort((betar - beta1) * rand(1, obj.r - 1) + beta1);
-            delta = arrayfun(@(i) b(i) - b(i - 1), 2:(obj.r - 1));
-            startPoints(1, :) = [min(obj.ub.plsor, max(obj.lb.plsor, ...
-              [alpha beta1 delta])), obj.hyp.cov, obj.hyp.sigma2/2];
-            y0 = obj.nlpFcn(startPoints(1, :));
-            undef(1) = isinf(y0) || isnan(y0);
-          end
+          % adjust plsor hyperparameter values          
+          plsor_hyp = obj.adjustPlsorParams(obj.hyp.plsor, muloo, s2loo, cdfb);
+          
+          % compute likelihood for user-defined point (adjusted to 
+          % precision boundaries)
+          startPoints(1, :) = [plsor_hyp, obj.hyp.cov, obj.hyp.sigma2/2];
+          y0 = obj.nlpFcn(startPoints(1, :));
+          undef(1) = isinf(y0) || isnan(y0);
           
           % random gp hyperparameters
           hyp_rand.cov = (obj.ub.cov - obj.lb.cov).*rand(1, length(obj.lb.cov)) + obj.lb.cov;
@@ -482,24 +477,25 @@ classdef OrdRegressionGP < handle
           i = 2;
           % find the rest of feasible starting points by random
           while sum(~undef) < obj.NumStartPoints
-            alpha = 0.01;
-            beta1 = -cdfb*sqrt(1 + min(s2loo)*alpha^2) - alpha*min(muloo);
-            betar =  cdfb*sqrt(1 + min(s2loo)*alpha^2) - alpha*max(muloo);
-            b = sort((betar - beta1) * rand(1, obj.r - 1) + beta1);
-            delta = arrayfun(@(i) b(i) - b(i - 1), 2:(obj.r - 1));
-            y0 = NaN;
-            while abs(alpha) < 2 && (isinf(y0) || isnan(y0))
-              alpha = 2 * alpha;
-              for s = [1 -1]
-                alpha = s * alpha;
-                hyp0 = [min(obj.ub.plsor, max(obj.lb.plsor, [alpha beta1 delta])) ...
+            % generate random plsor params
+            plsor_hyp = obj.adjustPlsorParams(obj.r, muloo, s2loo, cdfb);
+            hyp0 = [min(obj.ub.plsor, max(obj.lb.plsor, plsor_hyp)) ...
                   hyp_rand.cov hyp_rand.sigma2/2];
-                y0 = obj.nlpFcn(hyp0);
-                if ~isinf(y0) && ~isnan(y0)
-                  break;
-                end
-              end
-            end
+            y0 = obj.nlpFcn(hyp0);
+       
+%             y0 = NaN;        
+%             while abs(alpha) < 2 && (isinf(y0) || isnan(y0))
+%               alpha = 2 * alpha;
+%               for s = [1 -1]
+%                 alpha = s * alpha;
+%                 hyp0 = [min(obj.ub.plsor, max(obj.lb.plsor, [alpha beta1 delta])) ...
+%                   hyp_rand.cov hyp_rand.sigma2/2];
+%                 y0 = obj.nlpFcn(hyp0);
+%                 if ~isinf(y0) && ~isnan(y0)
+%                   break;
+%                 end
+%               end
+%             end
             undef(i) = isinf(y0) || isnan(y0);
             startPoints(i, :) = hyp0;
             i = i+1;
@@ -527,13 +523,18 @@ classdef OrdRegressionGP < handle
           % using startPoints
           for i = 1:size(startPoints, 1)
             optproblem.x0 = startPoints(i, :);
+            % for hyperparameter debugging and optimization:
+            % y0 = obj.nlpFcn(startPoints(i, :));
+            % fprintf('[%d]  Alpha: %0.4f  Lik: %0.4f  | ', i,  startPoints(i, 1), y0)
 
             warning('off', 'MATLAB:nearlySingularMatrix');
 
             % minimize negative log probability
             try
               [minx, miny, exitflag, optinfo] = fmincon(optproblem);
+              % fprintf('[fmincon]  Alpha: %0.4f  Lik: %0.4f\n', minx(1), miny)
             catch err
+              fprintf('Error\n')
               report = getReport(err);
               warning('fmincon in trial %d failed with error:\n%s', i, ...
                 report);
@@ -558,6 +559,93 @@ classdef OrdRegressionGP < handle
         otherwise
           error('Fit method ''%s'' not supported', obj.fitMethod);
       end
+    end
+    
+  end
+  
+  methods (Static)
+    
+    function hyp = adjustPlsorParams(hyp, mu, s2, prb)
+    % hyp = adjustPlsorParams(hyp, mu, s2, prec) adjusts plsor
+    % hyperparameters to necessary bounds given by cumulative normal
+    % distribution function. Parameters alpha, beta1 and betar has to 
+    % satisfy the following condition for all mu and s2:
+    % -prb < (alpha*mu + beta1)/sqrt(1+s2*alpha^2) <
+    % < (alpha*mu + betar)/sqrt(1+s2*alpha^2) < prb.
+    % Therefore, if (mu_max-mu_min)^2 > 4*prb^2*s2_min then
+    % abs(alpha) < 2*prb/sqrt((mu_max-mu_min)^2 - 4*prb^2*s2_min).
+    %
+    % hyp = adjustPlsorParams([alpha, beta1, delta], ...) adjusts 
+    % plsor hyperparameters to necessary bounds given by cumulative normal
+    % distribution function.
+    %
+    % hyp = adjustPlsorParams(r, ...) generates r-level plsor 
+    % hyperparameters within necessary bounds given by cndf.
+    %
+    % Input:
+    %   hyp - plsor hyperparameters [alpha, beta1, delta] or number of
+    %         delta parameters
+    %   mu  - predicted GP means
+    %   s2  - predicted GP variances
+    %   prb - chosen precision bound
+    
+      % compute min and max of mu and s2
+      mu_min = min(mu);
+      mu_max = max(mu);
+      s2_min = min(s2);
+      
+      % true if alpha has to be bounded
+      isAlphaBounded = (mu_max-mu_min)^2 > 4*prb^2*s2_min;
+      % bound for alpha
+      if isAlphaBounded
+        alphaBnd = 2*prb/sqrt((mu_max-mu_min)^2 - 4*prb^2*s2_min);
+      else
+        % TODO: find appropriate value - now the same as lower and upper
+        % bound
+        alphaBnd = 1e3;
+      end
+
+      % starting point (if empty, generate at random)
+      if length(hyp) == 1
+        % alpha = sign(alpha)*abs(alpha)
+        alpha = (1-2*(randi(2)-1)) * rand()*alphaBnd;
+        beta1 = -prb*sqrt(1 + s2_min*alpha^2) + max(-alpha*mu);
+        betar =  prb*sqrt(1 + s2_min*alpha^2) + min(-alpha*mu);
+        b = sort((betar - beta1) * rand(1, hyp - 1) + beta1);
+        delta = arrayfun(@(i) b(i) - b(i - 1), 2:(hyp - 1));
+      else
+        alpha = hyp(1);
+        beta1 = hyp(2);
+        delta = hyp(3:end);
+      end
+      
+      % alpha, beta1 and betar has to satisfy the following condition 
+      % for all mu and s2:
+      % -prb < (alpha*mu + beta1)/sqrt(1+s2*alpha^2) <
+      % (alpha*mu + betar)/sqrt(1+s2*alpha^2) < prb
+      % Therefore, if (mu_max-mu_min)^2 > 4*prb^2*s2_min then
+      % abs(alpha) < 2*prb/sqrt((mu_max-mu_min)^2 - 4*prb^2*s2_min).
+      if isAlphaBounded && ( abs(alpha) >= alphaBnd )
+        % alpha will be the half of the bound
+        alpha = sign(alpha)*alphaBnd/2;
+      end
+      % compute bounds for beta
+      beta_lb = -prb*sqrt(1 + s2_min*alpha^2) + max(-alpha*mu);
+      beta_ub =  prb*sqrt(1 + s2_min*alpha^2) + min(-alpha*mu);
+      % check beta1
+      if ( beta1 < beta_lb ) || ( beta1 > beta_ub )
+        beta1 = beta_lb;
+      end
+      % compute betar
+      betar = beta1 + sum(delta);
+      % check betar
+      if ( betar < beta1 ) || (betar > beta_ub)
+        delta = delta*(beta_ub - beta1)/sum(delta);
+      end
+      
+      % return adjusted values
+      hyp = [alpha, beta1, delta];
+      
     end
 
   end
