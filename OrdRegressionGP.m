@@ -378,12 +378,16 @@ classdef OrdRegressionGP < handle
     end
 
     function hyp = get.KernelParameters(obj)
-      s = functions(obj.covFcn);
-      if strcmp(s, 'sqexp') || strcmp(s, 'sqexpard')
-        hyp = [exp(2 * obj.hyp.cov(1)) exp(obj.hyp.cov(2:end))];
-      else
+      if iscell(obj.covFcn)
         hyp = obj.hyp.cov;
-      end
+      else
+        s = functions(obj.covFcn);
+        if strcmp(s.function, 'sqexp') || strcmp(s.function, 'sqexpard')
+          hyp = [exp(2 * obj.hyp.cov(1)) exp(obj.hyp.cov(2:end))];
+        else
+          hyp = obj.hyp.cov;
+        end
+      end      
     end
 
     function hyp = get.PlsorParameters(obj)
@@ -416,14 +420,18 @@ classdef OrdRegressionGP < handle
     end
 
     function covFcn = get.KernelFunction(obj)
-      s = functions(obj.covFcn);
-      switch s
-        case 'sqexp'
-          covFcn = 'squaredexponential';
-        case 'sqexpard'
-          covFcn = 'ardsquaredexponential';
-        otherwise
-          covFcn = s.function;
+      if iscell(obj.covFcn)
+        covFcn = obj.covFcn;
+      else
+        s = functions(obj.covFcn);
+        switch s.function
+          case 'sqexp'
+            covFcn = 'squaredexponential';
+          case 'sqexpard'
+            covFcn = 'ardsquaredexponential';
+          otherwise
+            covFcn = s.function;
+        end
       end
     end
 
