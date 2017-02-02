@@ -1,4 +1,4 @@
-function stats = testModel(Xtr, Ytr, Xte, Yte, settings, statFcns)
+function [stats, Ypred] = testModel(Xtr, Ytr, Xte, Yte, settings, statFcns)
   tic;
   ordgp = OrdRegressionGP(Xtr, Ytr, settings);
   t1 = toc;
