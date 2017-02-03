@@ -58,10 +58,6 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y
   Kinvy = cholsolve(R, y) / sigman2; % (K + sigman2 * eye(n)) * Kinvy == y
   assert(~dbg || sum(abs(Kinvy - (cholinv(R) ./ sigman2) * y)) < n*errtol);
 
-  % leave-one-out predictive mean (Eq. 12)
-  muloo = y - Kinvy ./ diagKinv;
-  % leave-one-out variance (Eq. 13)
-  s2loo = 1 ./ diagKinv - sigman2;
   %}
 
   %%%%%%%%%%%%%%%%%%%%
@@ -72,16 +68,16 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y
   %
   if iscell(covFcn)
     K__X_N__X_N = feval(covFcn{:}, hypCov, X);    % train covariance (posterior?)
-    grad = false; % does not support gradient yet
-  else
-    if nargout < 2
-      K = covFcn(X, X, hypCov);
-      grad = false;
-    else
-      [K, dK] = covFcn(X, X, hypCov);
+
+    if nargout >= 2
+      dK = zeros(size(K__X_N__X_N, 1), size(K__X_N__X_N, 2), nHypCov);
+      for j = 1:nHypCov
+        dK(:, :, j) = feval(covFcn{:}, hypCov, X, [], j);
+      end
       grad = true;
+    else
+      grad = false;
     end
-    K__X_N__X_N = K;
   end
 
   % Posterior
@@ -94,11 +90,7 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y
   L = chol(K__X_N__X_N/sn2 + eye(n) + 0.0001*eye(n));
   R = L;
   % inv(K+noise) * (y_N - mean)
-  if iscell(covFcn)
-    Kinv = solve_chol(L, eye(n)) / sn2;
-  else
-    Kinv = cholsolve(L, eye(n)) / sn2;
-  end
+  Kinv = solve_chol(L, eye(n)) / sn2;
 
   KinvyL    = Kinv*y;
   diagKinvL = diag(Kinv);

@@ -343,8 +343,8 @@ classdef OrdRegressionGP < handle
         obj.K = obj.covFcn(obj.X, obj.X, obj.hyp.cov);
       end
 
-%       obj.R = chol(obj.K/exp(obj.hyp.sigma2) + eye(n) + 0.0001*eye(n));
-      obj.R = chol(obj.K + exp(obj.hyp.sigma2) * eye(n));
+      obj.R = chol(obj.K/exp(obj.hyp.sigma2) + eye(n) + 0.0001*eye(n));
+%       obj.R = chol(obj.K + exp(obj.hyp.sigma2) * eye(n));
       obj.Kinvy = cholsolve(obj.R, obj.ys);
     end
 
