@@ -26,27 +26,29 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y
   hypPlsor = hyp(1:end-1-nHypCov);
   hypCov = hyp(end-nHypCov:end-1);
   sigman = hyp(end);
-  sigman2 = sigman^2;
   n = size(X, 1);
-
-  % the covariance matrix and its gradient if required
-%   if nargout >= 2
-%     [K, dK] = covFcn(X, X, hypCov);
-%     grad = true;
-%   else
-%     K = covFcn(X, X, hypCov);
-%     K = covSEiso(hypCov, X);
-    grad = false;
-%   end
 
   %%%%%%%%%%%%%%%%
   % Jakubova verze
   %%%%%%%%%%%%%%%%
  
   %{
-  
+  % the covariance matrix and its gradient if required
+  if nargout >= 2
+    [K, dK] = covFcn(X, X, hypCov);
+    grad = true;
+  else
+    K = covFcn(X, X, hypCov);
+    grad = false;
+  end
+
+  sigman2 = exp(2*sigman);
+  sigman = exp(sigman);
+
   % (K + sigman2 * eye(n)) / sigman2 == R' * R
   R = chol(K + sigman2 * eye(n)) / sigman;
+
+  Kinv = cholsolve(R, eye(n)) / sigman2;
 
   V = R' \ (1./sigman * eye(n));
   diagKinv = dot(V, V)'; % diagKinv = diag(inv(K + sigman2 * eye(n)))
@@ -60,16 +62,27 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y
   muloo = y - Kinvy ./ diagKinv;
   % leave-one-out variance (Eq. 13)
   s2loo = 1 ./ diagKinv - sigman2;
-
   %}
 
   %%%%%%%%%%%%%%%%%%%%
   % Lukasova verze
   %%%%%%%%%%%%%%%%%%%%
-  
+
   % Calculate covariances
   %
-  K__X_N__X_N = feval(covFcn{:}, hypCov, X);    % train covariance (posterior?)
+  if iscell(covFcn)
+    K__X_N__X_N = feval(covFcn{:}, hypCov, X);    % train covariance (posterior?)
+    grad = false; % does not support gradient yet
+  else
+    if nargout < 2
+      K = covFcn(X, X, hypCov);
+      grad = false;
+    else
+      [K, dK] = covFcn(X, X, hypCov);
+      grad = true;
+    end
+    K__X_N__X_N = K;
+  end
 
   % Posterior
   %
@@ -79,17 +92,25 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y
   sn2 = exp(2*sigman);
   % Cholesky factor of covariance with noise
   L = chol(K__X_N__X_N/sn2 + eye(n) + 0.0001*eye(n));
+  R = L;
   % inv(K+noise) * (y_N - mean)
-  Kinv = solve_chol(L, eye(n)) / sn2;
+  if iscell(covFcn)
+    Kinv = solve_chol(L, eye(n)) / sn2;
+  else
+    Kinv = cholsolve(L, eye(n)) / sn2;
+  end
 
   KinvyL    = Kinv*y;
   diagKinvL = diag(Kinv);
+
+  Kinvy = KinvyL;
+  diagKinv = diagKinvL;
   sigman2  = sn2;
-    
+
   % leave-one-out predictive mean (Eq. 12)
-  muloo = y - KinvyL ./ diagKinvL;
+  muloo = y - Kinvy ./ diagKinv;
   % leave-one-out variance (Eq. 13)
-  s2loo = 1 ./ diagKinvL;
+  s2loo = 1 ./ diagKinv;
 
   if dbg
     i0 = randi(n);
@@ -100,8 +121,6 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y
   end
 
   if grad
-    Kinv = cholinv(R) / sigman2;
-
     ds2loo = zeros(n, nHypCov + 1);
     dmuloo = zeros(n, nHypCov + 1);
 

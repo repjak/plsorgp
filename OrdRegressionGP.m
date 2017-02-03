@@ -164,18 +164,6 @@ classdef OrdRegressionGP < handle
       % initialize hyperparameters
       obj.hyp = struct();
       obj.hyp.cov = p.Results.KernelParameters;
-      % kernel bounds should be [cov1lb, cov1ub; cov2lb, cov2ub; ...]
-      if isempty(p.Results.KernelBounds)
-        obj.KernelBounds = [-2*ones(length(obj.hyp.cov), 1), ...
-                             2*ones(length(obj.hyp.cov), 1)];
-      else
-        obj.KernelBounds = p.Results.KernelBounds;
-      end
-      if isempty(p.Results.Sigma2Bounds)
-        obj.Sigma2Bounds = [log(1e-6), log(1e1)];
-      else
-        obj.Sigma2Bounds = p.Results.Sigma2Bounds;
-      end
       obj.hyp.plsor = p.Results.PlsorParameters;
 
       % set default kernel hyperparameter values
@@ -192,8 +180,16 @@ classdef OrdRegressionGP < handle
               obj.hyp.cov = reshape(obj.hyp.cov, 1, numel(obj.hyp.cov));
             end
 
-            obj.ub.cov = max([obj.hyp.cov + eps, ...
-                              log([sqrt(1e1), 1e1]), ...
+            % kernel bounds should be [cov1lb, cov1ub; cov2lb, cov2ub; ...]
+            if isempty(p.Results.KernelBounds)
+              obj.KernelBounds = [-2*ones(length(obj.hyp.cov), 1), ...
+                                   2*ones(length(obj.hyp.cov), 1)];
+            else
+              obj.KernelBounds = p.Results.KernelBounds;
+            end
+
+            obj.ub.cov = max([obj.hyp.cov + eps; ...
+                              log([sqrt(1e1), 1e1]); ...
                               obj.KernelBounds(:, 2)']);
           case 'ardsquaredexponential'
             obj.covFcn = @sqexpard;
@@ -204,6 +200,14 @@ classdef OrdRegressionGP < handle
               obj.hyp.cov = log([1 ones(1, obj.d)]);
             else
               obj.hyp.cov = reshape(obj.hyp.cov, 1, numel(obj.hyp.cov));
+            end
+
+            % kernel bounds should be [cov1lb, cov1ub; cov2lb, cov2ub; ...]
+            if isempty(p.Results.KernelBounds)
+              obj.KernelBounds = [-2*ones(length(obj.hyp.cov), 1), ...
+                                   2*ones(length(obj.hyp.cov), 1)];
+            else
+              obj.KernelBounds = p.Results.KernelBounds;
             end
 
             obj.ub.cov = max([obj.hyp.cov + eps, ...
@@ -224,7 +228,15 @@ classdef OrdRegressionGP < handle
           error('No hyperparameters for a user supplied kernel function%s.', ...
             covFcnName);
         end
-        
+
+        % kernel bounds should be [cov1lb, cov1ub; cov2lb, cov2ub; ...]
+        if isempty(p.Results.KernelBounds)
+          obj.KernelBounds = [-2*ones(length(obj.hyp.cov), 1), ...
+                               2*ones(length(obj.hyp.cov), 1)];
+        else
+          obj.KernelBounds = p.Results.KernelBounds;
+        end
+
         % standardize hyperparameters input
         obj.hyp.cov = reshape(obj.hyp.cov, 1, numel(obj.hyp.cov));
         obj.ub.cov = max(obj.hyp.cov + eps, ...
@@ -240,10 +252,16 @@ classdef OrdRegressionGP < handle
       obj.NumStartPoints = p.Results.NumStartPoints;
 
       % set the noise hyperparameter
-      if p.Results.Sigma2 == 0
+      if isempty(p.Results.Sigma2)
         obj.hyp.sigma2 = log(var(obj.ys) / 2);
       else
         obj.hyp.sigma2 = p.Results.Sigma2;
+      end
+
+      if isempty(p.Results.Sigma2Bounds)
+        obj.Sigma2Bounds = [log(1e-6), log(1e1)];
+      else
+        obj.Sigma2Bounds = p.Results.Sigma2Bounds;
       end
 
       obj.lb.sigma2 = min(obj.hyp.sigma2 - eps, obj.KernelBounds(1));
@@ -305,7 +323,7 @@ classdef OrdRegressionGP < handle
       if isempty(p.Results.OptimizerOptions)
         obj.optimopts = optimoptions( ...
           @fmincon, ...
-          'GradObj', 'off', ...
+          'GradObj', 'on', ...
           'Display', 'off', ...
           'MaxIter', 3e3, ...
           'Algorithm', 'interior-point' ...
@@ -319,9 +337,15 @@ classdef OrdRegressionGP < handle
 
       % non-gpml
       % precompute the covariance matrix for prediction calls
-%       obj.K = obj.covFcn(obj.X, obj.X, obj.hyp.cov);
-%       obj.R = chol(obj.K + obj.hyp.sigma2 * eye(n));
-%       obj.Kinvy = cholsolve(obj.R, obj.ys);
+      if iscell(obj.covFcn)
+        obj.K = feval(obj.covFcn{:}, obj.hyp.cov, obj.X);
+      else
+        obj.K = obj.covFcn(obj.X, obj.X, obj.hyp.cov);
+      end
+
+%       obj.R = chol(obj.K/exp(obj.hyp.sigma2) + eye(n) + 0.0001*eye(n));
+      obj.R = chol(obj.K + exp(obj.hyp.sigma2) * eye(n));
+      obj.Kinvy = cholsolve(obj.R, obj.ys);
     end
 
     function [y, p, mu, s2, e] = predict(obj, Xnew)
@@ -360,7 +384,13 @@ classdef OrdRegressionGP < handle
       likFcn  = @likGauss;
       infFcn  = @infExact;
       obj.hyp.lik = obj.hyp.sigma2;
-      [mu, s2] = gp(obj.hyp, infFcn, meanFcn, obj.covFcn, likFcn, obj.X, obj.y, Xnew);
+
+      if iscell(obj.covFcn)
+        [mu, s2] = gp(obj.hyp, infFcn, meanFcn, obj.covFcn, likFcn, obj.X, obj.y, Xnew);
+      else
+        [mu, s2] = gpPred(obj.X, [], Xnew, obj.covFcn, obj.hyp.cov, ...
+  [], obj.R, obj.Kinvy);
+      end
 
       % probabilistic predictions for all classes and all test data
       P = zeros(m, obj.r);
