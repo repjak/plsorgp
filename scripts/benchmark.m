@@ -74,6 +74,8 @@ datasets = struct(...
   'dataTe10', cell(1, 9) ...
 );
 
+datasets = datasets(1:2);
+
 nDatasets = length(datasets);
 downloadData(datapath, datasets);
 [datasets, dataInfo] = preprocData(datapath, datasets, bins, nReps);
@@ -135,6 +137,10 @@ nStatFcns = length(statFcns);
 % the last dimension is for statistics mean vs. std
 results = cell(nDatasets, nBins, nModels, nStatFcns, 2);
 
+% testY, predY data (distinguished by the last dimension) for all datasets,
+% all bin sizes and all models
+resYpred = cell(nDatasets, nBins, nModels, 2);
+
 % data for tables with datasets in rows and all formatted combinations of
 % model settings vs. statistics in columns
 resTbls = repmat({cell2table(repmat({''}, nDatasets, nModels * nStatFcns + 1))}, ...
@@ -168,7 +174,15 @@ for binIdx = 1:length(bins)
           Xte = dataTe{rep}{:, 1:end-1};
           Yte = dataTe{rep}{:, end};
 
-          stats(rep, :) = testModel(Xtr, Ytr, Xte, Yte, model.settings, statFcns);
+          if rep == 1
+            ypred = zeros(size(Yte, 1), nReps);
+            ytest = zeros(size(Yte, 1), nReps);
+          end
+
+          [st, out] = testModel(Xtr, Ytr, Xte, Yte, model.settings, statFcns);
+          stats(rep, :) = st;
+          ytest(:, rep) = Yte;
+          ypred(:, rep) = out;
         end
       end
 
@@ -179,6 +193,10 @@ for binIdx = 1:length(bins)
       % raw results
       results(datasetIdx, binIdx, modelIdx, :, 1) = num2cell(mean(stats));
       results(datasetIdx, binIdx, modelIdx, :, 2) = num2cell(std(stats));
+
+      % (Yte, Ypred) matrices
+      resYpred(datasetIdx, binIdx, modelIdx, 1) = {ytest};
+      resYpred(datasetIdx, binIdx, modelIdx, 2) = {ypred};
 
       % formatted results
       if isempty(resTbls{binIdx}{datasetIdx, 1}{:})
