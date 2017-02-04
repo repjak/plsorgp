@@ -266,11 +266,6 @@ classdef OrdRegressionGP < handle
 
       obj.lb.sigma2 = min(obj.hyp.sigma2 - eps, obj.KernelBounds(1));
       obj.ub.sigma2 = max(obj.hyp.sigma2 + eps, obj.KernelBounds(2));
-      
-      % initialize probability distribution
-      pd = makedist('Normal', 0, 1);
-      % compute cdf bound value
-      cdfb = abs(icdf(pd, eps)) / 2;
 
       % set default plsor values
       if isempty(obj.hyp.plsor)
@@ -584,7 +579,7 @@ classdef OrdRegressionGP < handle
             if miny < obj.minNlp;
               obj.hyp.plsor = minx(1:length(obj.hyp.plsor));
               obj.hyp.cov = minx(length(obj.hyp.plsor)+1:end-1);
-              obj.hyp.sigma2 = minx(end)^2;
+              obj.hyp.sigma2 = minx(end)*2;
 
               obj.minNlp = miny;
               obj.OptimInfo = optinfo;
