@@ -32,6 +32,7 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y
   % Jakubova verze
   %%%%%%%%%%%%%%%%
 
+  %{
   % the covariance matrix and its gradient if required
   if nargout >= 2
     [K, dK] = covFcn(X, X, hypCov);
@@ -54,12 +55,12 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y
 
   Kinvy = cholsolve(R, y) / sigman2; % (K + sigman2 * eye(n)) * Kinvy == y
   assert(~dbg || sum(abs(Kinvy - (cholinv(R) ./ sigman2) * y)) < n*errtol);
+  %}
 
   %%%%%%%%%%%%%%%%%%%%
   % Lukasova verze
   %%%%%%%%%%%%%%%%%%%%
 
-  %{
   % Calculate covariances
   %
   if iscell(covFcn)
@@ -91,11 +92,9 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y
   KinvyL    = Kinv*y;
   diagKinvL = diag(Kinv);
 
-  K = K__X_N__X_N;
   Kinvy = KinvyL;
   diagKinv = diagKinvL;
   sigman2  = sn2;
-  %}
 
   % leave-one-out predictive mean (Eq. 12)
   muloo = y - Kinvy ./ diagKinv;
