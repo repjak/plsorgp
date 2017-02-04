@@ -264,8 +264,13 @@ classdef OrdRegressionGP < handle
         obj.Sigma2Bounds = p.Results.Sigma2Bounds;
       end
 
-      obj.lb.sigma2 = min(obj.hyp.sigma2 - eps, obj.KernelBounds(1));
-      obj.ub.sigma2 = max(obj.hyp.sigma2 + eps, obj.KernelBounds(2));
+      obj.lb.sigma2 = min(obj.hyp.sigma2 - eps, obj.Sigma2Bounds(1));
+      obj.ub.sigma2 = max(obj.hyp.sigma2 + eps, obj.Sigma2Bounds(2));
+
+      % initialize probability distribution
+      pd = makedist('Normal', 0, 1);
+      % compute cdf bound value
+      cdfb = abs(icdf(pd, eps)) / 2;
 
       % set default plsor values
       if isempty(obj.hyp.plsor)
@@ -373,7 +378,7 @@ classdef OrdRegressionGP < handle
       % GP prediction assuming Gaussian likelihood
 %       [mu, s2] = gpPred(obj.X, [], Xnew, obj.covFcn, obj.hyp.cov, ...
 %         [], obj.R, obj.Kinvy);
-      
+
       % gpml prediction
       meanFcn = @meanZero;
       likFcn  = @likGauss;
@@ -515,7 +520,7 @@ classdef OrdRegressionGP < handle
             hyp0 = [min(obj.ub.plsor, max(obj.lb.plsor, plsor_hyp)) ...
                   hyp_rand.cov hyp_rand.sigma2/2];
             y0 = obj.nlpFcn(hyp0);
-       
+
 %             y0 = NaN;        
 %             while abs(alpha) < 2 && (isinf(y0) || isnan(y0))
 %               alpha = 2 * alpha;
