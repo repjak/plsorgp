@@ -31,8 +31,7 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y
   %%%%%%%%%%%%%%%%
   % Jakubova verze
   %%%%%%%%%%%%%%%%
- 
-  %{
+
   % the covariance matrix and its gradient if required
   if nargout >= 2
     [K, dK] = covFcn(X, X, hypCov);
@@ -48,8 +47,6 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y
   % (K + sigman2 * eye(n)) / sigman2 == R' * R
   R = chol(K + sigman2 * eye(n)) / sigman;
 
-  Kinv = cholsolve(R, eye(n)) / sigman2;
-
   V = R' \ (1./sigman * eye(n));
   diagKinv = dot(V, V)'; % diagKinv = diag(inv(K + sigman2 * eye(n)))
   assert(~dbg || ...
@@ -58,12 +55,11 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y
   Kinvy = cholsolve(R, y) / sigman2; % (K + sigman2 * eye(n)) * Kinvy == y
   assert(~dbg || sum(abs(Kinvy - (cholinv(R) ./ sigman2) * y)) < n*errtol);
 
-  %}
-
   %%%%%%%%%%%%%%%%%%%%
   % Lukasova verze
   %%%%%%%%%%%%%%%%%%%%
 
+  %{
   % Calculate covariances
   %
   if iscell(covFcn)
@@ -95,9 +91,11 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y
   KinvyL    = Kinv*y;
   diagKinvL = diag(Kinv);
 
+  K = K__X_N__X_N;
   Kinvy = KinvyL;
   diagKinv = diagKinvL;
   sigman2  = sn2;
+  %}
 
   % leave-one-out predictive mean (Eq. 12)
   muloo = y - Kinvy ./ diagKinv;
@@ -113,10 +111,12 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y
   end
 
   if grad
+    Kinv = cholsolve(R, eye(n)) / sigman2;
+
     ds2loo = zeros(n, nHypCov + 1);
     dmuloo = zeros(n, nHypCov + 1);
 
-    dK(:, :, end+1) = 2 * sigman * eye(n);
+    dK(:, :, end+1) = 2 * sigman2 * eye(n);
 
     for l = 1:size(dK, 3)
       Z = cholsolve(R, dK(:, :, l)) ./ sigman2; % K * Z == dK(:, :, l)
@@ -125,7 +125,7 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y
       ds2loo(:, l) = ds2loo1;
     end
 
-    ds2loo(:, end) = ds2loo(:, end) - 2 * sigman;
+    ds2loo(:, end) = ds2loo(:, end);% - 2 * sigman2;
 
     [p, dp] = predProb(y, hypPlsor, muloo, s2loo, dmuloo, ds2loo);
 
