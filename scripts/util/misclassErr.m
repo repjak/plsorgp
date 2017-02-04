@@ -41,10 +41,9 @@ function err = misclassErr(ypred, y, type)
     case 'kendall'
       err = corr(ypred, y, 'type', 'kendall');
     case 'rde'
-      [~, idx] = sort(y);
-      err = errRankMu(ypred(idx), floor(length(ypred)/2));
+      err = errRankMu(ypred, y, floor(length(ypred)/2));
     otherwise
-    error('Unknown error type ''%s''.', type);
+      error('Unknown error type ''%s''.', type);
   end
 end
 
