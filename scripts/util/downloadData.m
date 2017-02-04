@@ -8,7 +8,8 @@ function downloadData(datapath, datasets)
     mkdir(datapath);
   end
 
-  for dataset = datasets
+  for i = 1:length(datasets)
+    dataset = datasets(i);
     url = dataset.url;
     urlparts = strsplit(url, '/');
     assert(length(urlparts) >= 2);
