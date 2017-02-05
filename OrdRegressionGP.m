@@ -82,7 +82,7 @@ classdef OrdRegressionGP < handle
       p.addParameter('Standardize', true, ...
         @(x) validateattributes(x, {'logical'}, {'size', [1, 1]}));
       covFcns = {'squaredexponential', 'ardsquaredexponential'};
-      p.addParameter('KernelFunction', 'ardsquaredexponential', ...
+      p.addParameter('KernelFunction', 'squaredexponential', ...
         @(x) ((ischar(x) && ismember(x, covFcns))) || ...
         isa(x, 'function_handle') || iscell(x));
       p.addParameter('KernelParameters', [], ...
@@ -374,23 +374,10 @@ classdef OrdRegressionGP < handle
 
       m = size(Xnew, 1);
 
-      % non-gpml
-      % GP prediction assuming Gaussian likelihood
-%       [mu, s2] = gpPred(obj.X, [], Xnew, obj.covFcn, obj.hyp.cov, ...
-%         [], obj.R, obj.Kinvy);
-
-      % gpml prediction
-      meanFcn = @meanZero;
-      likFcn  = @likGauss;
-      infFcn  = @infExact;
-      obj.hyp.lik = obj.hyp.sigma2;
-
-      if iscell(obj.covFcn)
-        [mu, s2] = gp(obj.hyp, infFcn, meanFcn, obj.covFcn, likFcn, obj.X, obj.y, Xnew);
-      else
-        [mu, s2] = gpPred(obj.X, [], Xnew, obj.covFcn, obj.hyp.cov, ...
-  [], obj.R, obj.Kinvy);
-      end
+      % Do not to use the pre-computed matrices, as it does not work :(
+      [mu, s2] = gpPred(obj.X, obj.y, Xnew, obj.covFcn, obj.hyp.cov, exp(obj.hyp.sigma2));
+      % [mu, s2] = gpPred(obj.X, [], Xnew, obj.covFcn, obj.hyp.cov, ...
+      %   exp(obj.hyp.sigma2), obj.R, obj.Kinvy);
 
       % probabilistic predictions for all classes and all test data
       P = zeros(m, obj.r);
