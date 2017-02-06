@@ -145,7 +145,7 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y
     ds2loo = zeros(n, nHypCov + 1);
     dmuloo = zeros(n, nHypCov + 1);
 
-    dK(:, :, end+1) = 2 * sn * eye(n);
+    dK(:, :, end+1) = 2 * sn2 * eye(n);
 
     for l = 1:size(dK, 3)
       Z = cholsolve(R, dK(:, :, l)) ./ sn2; % K * Z == dK(:, :, l)
@@ -154,7 +154,8 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y
       ds2loo(:, l) = ds2loo1;
     end
 
-    ds2loo(:, end) = ds2loo(:, end) - 2 * sn;
+    % seems not to work anymore
+    %ds2loo(:, end) = ds2loo(:, end) - 2 * sn2;
 
     [p, dp] = predProb(y, hypPlsor, muloo, s2loo, dmuloo, ds2loo);
 
