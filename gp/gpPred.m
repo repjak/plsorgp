@@ -107,12 +107,8 @@ function [mu, s2] = gpPred(X, y, Xnew, covFcn, hyp, sigma2, varargin)
     end
     % remove numerical noise i.e. negative variances
     Fs2 = max(fs2, 0);
-    if iscell(covFcn)
-      % apply likelihood function
-      [~, ~, Ys2] = feval(@likGauss, log(sigma2)/2, [], mu(:), Fs2(:));
-    else
-      Ys2 = Fs2;
-    end
+    % apply likelihood function
+    [~, ~, Ys2] = feval(@likGauss, log(sigma2)/2, [], mu(:), Fs2(:));
     % correct GPML's bug for the case when Fs2 == zeros(...)
     if (size(Ys2,1) == 1)
       Ys2 = repmat(Ys2, size(Fs2,1), 1);
