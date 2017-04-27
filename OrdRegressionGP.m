@@ -374,10 +374,7 @@ classdef OrdRegressionGP < handle
 
       m = size(Xnew, 1);
 
-      % Do not to use the pre-computed matrices, as it does not work :(
       [mu, s2] = gpPred(obj.X, obj.y, Xnew, obj.covFcn, obj.hyp.cov, exp(obj.hyp.sigma2));
-      % [mu, s2] = gpPred(obj.X, [], Xnew, obj.covFcn, obj.hyp.cov, ...
-      %   exp(obj.hyp.sigma2), obj.R, obj.Kinvy);
 
       % probabilistic predictions for all classes and all test data
       P = zeros(m, obj.r);

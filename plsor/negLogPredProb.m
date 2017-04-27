@@ -103,7 +103,7 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y
   L = chol(K/sn2 + eye(n)); % + 0.0001*eye(n));
   R = L;
   % inv(K+noise) * (y_N - mean)
-  Kinv = solve_chol(L, eye(n)) / sn2;
+  Kinv = cholsolve(L, eye(n)) / sn2;
 
   KinvyL    = Kinv*y;
   diagKinvL = diag(Kinv);
@@ -129,10 +129,8 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y
   if dbg
     i0 = randi(n);
     idx = [1:(i0 - 1) (i0 + 1):n];
-    R_i = R(idx, idx);
-    Kinvy_i = Kinvy(idx);
     [muloo0, s2loo0] = gpPred(X(idx, :), y(idx), X(i0, :), covFcn, ...
-      hypCov, sn2); % , R_i, Kinvy_i);  % Do not use precomputed matrices as it does not work
+      hypCov, sn2);
     assert(sum(abs([muloo0 s2loo0] - [muloo(i0) s2loo(i0)])) <= n*errtol);
     fprintf('prediction differs from LOO pred by %e\n', abs([muloo0 s2loo0] - [muloo(i0) s2loo(i0)]));
   end
@@ -153,9 +151,6 @@ function [logp, dlogp, muloo, s2loo] = negLogPredProb(hyp, nHypCov, covFcn, X, y
 	    dmuloo(:, l) = (Z * Kinvy) ./ diagKinv - Kinvy .* ds2loo1;
       ds2loo(:, l) = ds2loo1;
     end
-
-    % seems not to work anymore
-    %ds2loo(:, end) = ds2loo(:, end) - 2 * sn2;
 
     [p, dp] = predProb(y, hypPlsor, muloo, s2loo, dmuloo, ds2loo);
 
