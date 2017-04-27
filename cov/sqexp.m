@@ -18,7 +18,7 @@ function [Kmn, dKmn] = sqexp(Xm, z, theta, j)
 %      Xm    -- an m-d matrix of m examples with dimensionality d
 %      Xn    -- an n-d matrix
 %      theta -- a vector of 2 hyperparameters,
-%               theta = [log(sigma^2); log(l)]
+%               theta = [log(sigma); log(l)]
 %      j     -- a vector of hyperparameter indices
 %
 %   The output is a m-n matrix of cross-covariances or a m-1 vector of

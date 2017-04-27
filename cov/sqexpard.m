@@ -19,7 +19,7 @@ function [Kmn, dKmn] = sqexpard(Xm, z, theta, j)
 %      Xm    -- an m-d matrix of m examples with dimensionality d
 %      Xn    -- an n-d matrix
 %      theta -- a vector of d+1 hyperparameters,
-%               theta = [log(sigma^2); log(l)]
+%               theta = [log(sigma); log(l)]
 %      j     -- a vector of hyperparameter indices
 %
 %   See also SQEXP.
@@ -67,8 +67,8 @@ function [Kmn, dKmn] = sqexpard(Xm, z, theta, j)
     Xm = bsxfun(@minus, Xm, mu);
     Xn = bsxfun(@minus, Xn, mu);
 
-    Xm = bsxfun(@rdivide, Xm, l');
-    Xn = bsxfun(@rdivide, Xn, l');
+    Xm = bsxfun(@rdivide, Xm, (1./l)');
+    Xn = bsxfun(@rdivide, Xn, (1./l)');
 
     % the pairwise squared distances
     Kmn = bsxfun(@plus, dot(Xm, Xm, 2), dot(Xn, Xn, 2)') - 2 * (Xm * Xn');
@@ -81,15 +81,15 @@ function [Kmn, dKmn] = sqexpard(Xm, z, theta, j)
       j = (1:(d+1));
     end
 
-    Kmn = sigma2 * exp(-Kmn / 2);
-
     % for the partial derivatives
-    dKmn = repmat(Kmn, 1, 1, length(j));
+    dKmn = repmat(exp(-Kmn / 2), 1, 1, length(j));
+
+    Kmn = sigma2 * exp(-Kmn / 2);
 
     for k = reshape(j, 1, numel(j))
       if j(k) == 1
         % the signal variance parameter
-        dKmn(:, :, k) = 2 * dKmn(:, :, k);
+        dKmn(:, :, k) = 2 * sigma2 * dKmn(:, :, k);
       elseif j(k) <= d + 1
         % a length-scale parameter
         dim = j(k) - 1;
@@ -99,8 +99,8 @@ function [Kmn, dKmn] = sqexpard(Xm, z, theta, j)
         else
           % pairwise squared distances in (j(k)-1)th dimension
           sqdistk = bsxfun(@(xk, yk) (xk - yk).^2, ...
-            Xm(:, dim), Xn(:, dim)');
-          dKmn(:, :, k) = dKmn(:, :, k) .* sqdistk;
+            Xm(:, dim) ./ l(dim), Xn(:, dim)' ./ l(dim));
+          dKmn(:, :, k) = sigma2 * dKmn(:, :, k) .* sqdistk;
         end
       else
         error('Hyperparameter index %d out of range.', j(k));
