@@ -5,7 +5,7 @@ classdef BinningTest < matlab.unittest.TestCase
   methods (Test)
     function binningTest(testCase)
       for k = 1:5
-        testCase.verifyEmpty(binning([], k));
+        testCase.verifyEmpty(binning([], k, 'uniform'));
       end
 
       n = 1000;
@@ -13,8 +13,8 @@ classdef BinningTest < matlab.unittest.TestCase
       ran = 10;
       data = l + (ran+l) * rand(1, n);
 
-      testCase.verifyError(@() binning(data, 0), '');
-      testCase.verifyEqual(binning(data, 1), ones(1, n));
+      testCase.verifyError(@() binning(data, 0, 'uniform'), '');
+      testCase.verifyEqual(binning(data, 1, 'uniform'), ones(n, 1));
     end
   end
 
