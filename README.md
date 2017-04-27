@@ -64,6 +64,7 @@ Srijith, P. K.; Shevade, S. & Sundararajan, S.
 A probabilistic least squares approach to ordinal regression
 *Proceedings of the 25th Australasian Joint Conference on Advances in Artificial Intelligence, Springer-Verlag*, **2012**, 683-694
 </a>
+
 <a name="gpml">[2]
 Rasmussen, C. E. & Nickisch, H.
 Gaussian processes for machine learning (GPML) toolbox *J. Mach. Learn. Res., JMLR.org*, **2010**, *11*, 3011-3015
